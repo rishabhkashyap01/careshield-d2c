@@ -22,6 +22,16 @@ A marketing landing page (hero, how it works, transparent pricing, FAQ). Every "
 3. **Payment:** order summary and payment-method cards.
 4. **You're covered:** a confetti check and an animated policy card.
 
+You can always go back or cancel:
+
+- **Back** on the health step returns to your details, pre-filled. **Change details** on the payment step does the same.
+- **Back to my quote** returns to where you were without changing anything.
+- A completed **"Your details"** step in the progress bar can also be clicked.
+- Submitting new details gives a fresh price and lock. The declaration has to be answered again, because it belongs to the old quote.
+- **Cancel quote** asks "Discard this quote?", then clears the journey and closes the pop-up.
+
+Nothing is sent to the API when you cancel. An abandoned quote simply expires after its 15-minute lock, and an expired quote can never be paid.
+
 If you close the pop-up mid-journey, a floating **"Price locked · 12:31 left — Resume"** pill brings you back to the same step. The page's buttons change to "Resume my quote", and to "View my policy" after purchase.
 
 **Accessibility.** The pop-up is a native `<dialog>` opened with `showModal()`. That traps focus inside, makes the page behind inert, and closes on Esc. Focus moves to each step's heading. Radio groups use real `<fieldset>`/`<legend>`. The countdown speaks only at 5 min, 2 min, 1 min, 30 s and 10 s. `prefers-reduced-motion` turns animations off.
@@ -32,7 +42,7 @@ If you close the pop-up mid-journey, a floating **"Price locked · 12:31 left �
 | `components/flow/FlowProvider.tsx` | Journey state shared by the page, pop-up and pill: quote, countdown, policy, recalculate |
 | `components/flow/FlowDialog.tsx` | The pop-up: header, progress, price strip, animated step switcher |
 | `components/flow/{Details,Health,Payment,Done}Step.tsx` | The four screens |
-| `components/flow/{PriceBar,CountdownRing,StepHeader,ExpiredPanel,ResumePill,StartButton,PolicyCard}.tsx` | Pieces of the pop-up and page |
+| `components/flow/{PriceBar,CountdownRing,StepHeader,ExpiredPanel,ResumePill,StartButton,PolicyCard,CancelQuote}.tsx` | Pieces of the pop-up and page |
 | `components/ui.tsx`, `components/icons.tsx` | Buttons, alerts, yes/no control, inline SVG icons |
 
 Fonts are Geist, bundled from the `geist` package, so the build downloads nothing.

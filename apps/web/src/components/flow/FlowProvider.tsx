@@ -32,6 +32,8 @@ interface FlowContextValue {
   policy: IssuedPolicy | null;
 
   quoteState: QuoteFormState;
+  /** What the details form should show (blank after a quote is discarded). */
+  detailsValues: QuoteInputs;
   quoteAction: (fd: FormData) => void;
   quotePending: boolean;
   editDetails: () => void;
@@ -47,6 +49,8 @@ interface FlowContextValue {
   onDeclared: (q: Quote) => void;
   onPaid: (p: IssuedPolicy) => void;
   startOver: () => void;
+  /** Discard the current quote and close the dialog. */
+  cancelQuote: () => void;
 }
 
 const FlowContext = createContext<FlowContextValue | null>(null);
@@ -79,11 +83,13 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   const [policy, setPolicy] = useState<IssuedPolicy | null>(null);
   const [isEditing, setEditing] = useState(false);
   const [serverExpiredFor, setServerExpiredFor] = useState<string | null>(null);
+  const [discarded, setDiscarded] = useState(false);
 
   // Step 1 — useActionState drives the quote form's pending + error state.
   const [quoteState, quoteAction, quotePending] = useActionState<QuoteFormState, FormData>(
     async (prev, fd) => {
       const result = await requestQuote(prev, fd);
+      setDiscarded(false);
       if (result.status === 'success') {
         setActive({ quote: result.quote, receivedAt: Date.now() });
         setPolicy(null);
@@ -135,6 +141,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     quote,
     policy,
     quoteState,
+    detailsValues: discarded ? INITIAL.values : quoteState.values,
     quoteAction,
     quotePending,
     isEditing,
@@ -151,6 +158,13 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       setActive(null);
       setPolicy(null);
       setEditing(false);
+    },
+    cancelQuote: () => {
+      setDiscarded(true);
+      setActive(null);
+      setPolicy(null);
+      setEditing(false);
+      setOpen(false);
     },
   };
 

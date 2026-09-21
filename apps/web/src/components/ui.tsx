@@ -16,9 +16,10 @@ export function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
 }
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  ref?: React.Ref<HTMLButtonElement>;
   pending?: boolean;
   pendingLabel?: string;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'light';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'light' | 'danger';
   size?: 'md' | 'lg';
 };
 
@@ -43,6 +44,8 @@ export function Button({
     ghost: 'text-brand-700 hover:bg-brand-50 disabled:text-slate-400',
     light:
       'bg-white text-brand-900 shadow-lift hover:-translate-y-px hover:bg-brand-50 active:translate-y-0',
+    danger:
+      'bg-rose-600 text-white hover:bg-rose-700 disabled:bg-slate-300 disabled:text-slate-600',
   } as const;
   return (
     <button

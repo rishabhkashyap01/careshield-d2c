@@ -5,8 +5,9 @@ import { payPremium } from '@/app/actions';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatMoney } from '@/lib/format';
 import type { PaymentState } from '@/lib/types';
-import { CardIcon, LockIcon, PhoneIcon } from '../icons';
+import { ArrowLeftIcon, CardIcon, LockIcon, PhoneIcon } from '../icons';
 import { Alert, Button } from '../ui';
+import { CancelQuote } from './CancelQuote';
 import { useFlow } from './FlowProvider';
 
 const METHODS = [
@@ -48,7 +49,7 @@ const METHODS = [
  *     most one successful payment per quote.
  */
 export function PaymentStep() {
-  const { quote, expired, onPaid, markExpired } = useFlow();
+  const { quote, expired, onPaid, markExpired, editDetails } = useFlow();
   const q = quote!;
   const keys = useRef(new Map<string, string>());
   const keyFor = (token: string) => {
@@ -160,7 +161,13 @@ export function PaymentStep() {
         </fieldset>
       </div>
 
-      <div className="space-y-2 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur">
+      <div className="relative space-y-2 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur">
+        <div className="flex items-center justify-between gap-2">
+          <Button type="button" variant="ghost" onClick={editDetails} disabled={pending}>
+            <ArrowLeftIcon className="h-4 w-4" /> Change details
+          </Button>
+          <CancelQuote disabled={pending} />
+        </div>
         <Button
           type="submit"
           size="lg"

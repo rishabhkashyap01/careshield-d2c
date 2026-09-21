@@ -11,7 +11,19 @@ const MAX = 99;
 
 /** Step 1 — age + pre-existing conditions → a locked quote. */
 export function DetailsStep() {
-  const { quoteState: state, quoteAction, quotePending: pending, quote, backToQuote } = useFlow();
+  const {
+    quoteState,
+    detailsValues,
+    quoteAction,
+    quotePending: pending,
+    quote,
+    backToQuote,
+  } = useFlow();
+  // After a discard, show a blank form and hide the stale errors.
+  const state =
+    detailsValues === quoteState.values
+      ? quoteState
+      : { status: 'idle' as const, values: detailsValues };
   const onSubmit = useSubmit(quoteAction);
   const errors = state.status === 'error' ? (state.fieldErrors ?? {}) : {};
   const ageRef = useRef<HTMLInputElement>(null);
@@ -40,6 +52,13 @@ export function DetailsStep() {
             Two quick questions. Your price is locked for 15 minutes once calculated.
           </p>
         </div>
+
+        {quote && (
+          <Alert tone="info" title="Changing your details" role="status">
+            You’ll get a fresh price and a new 15-minute lock, and you’ll answer the health
+            questions again. Your current quote stays available until you submit.
+          </Alert>
+        )}
 
         {state.status === 'error' && state.message && (
           <Alert tone="error" title="We couldn’t calculate your premium">

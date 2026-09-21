@@ -74,7 +74,12 @@ export function FlowDialog() {
               <XIcon className="h-5 w-5" />
             </button>
           </div>
-          <StepHeader view={flow.view} />
+          <StepHeader
+            view={flow.view}
+            onEditDetails={
+              flow.view === 'health' || flow.view === 'payment' ? flow.editDetails : undefined
+            }
+          />
         </header>
 
         {showPriceBar && <PriceBar />}

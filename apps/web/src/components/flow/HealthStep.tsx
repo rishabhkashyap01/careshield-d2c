@@ -5,6 +5,7 @@ import { submitDeclaration } from '@/app/actions';
 import { useSubmit } from '@/hooks/useSubmit';
 import type { DeclarationState } from '@/lib/types';
 import {
+  ArrowLeftIcon,
   ArrowRightIcon,
   DocIcon,
   HeartPulseIcon,
@@ -13,6 +14,7 @@ import {
   AlertIcon,
 } from '../icons';
 import { Alert, Button, FieldError, YesNo } from '../ui';
+import { CancelQuote } from './CancelQuote';
 import { useFlow } from './FlowProvider';
 
 const QUESTIONS = [
@@ -26,7 +28,8 @@ const QUESTIONS = [
 
 /** Step 2 — medical declaration. */
 export function HealthStep() {
-  const { quote, expired, onDeclared, markExpired, recalculate, recalculating } = useFlow();
+  const { quote, expired, onDeclared, markExpired, recalculate, recalculating, editDetails } =
+    useFlow();
   const [state, action, pending] = useActionState<DeclarationState, FormData>(
     async (prev, fd) => {
       const result = await submitDeclaration(quote!.quoteId, prev, fd);
@@ -122,7 +125,14 @@ export function HealthStep() {
         </p>
       </div>
 
-      <div className="flex justify-end border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur">
+      <div className="relative flex flex-col-reverse gap-3 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur sm:flex-row sm:items-center">
+        <div className="flex items-center justify-between gap-2 sm:justify-start">
+          <Button type="button" variant="ghost" onClick={editDetails} disabled={pending}>
+            <ArrowLeftIcon className="h-4 w-4" /> Back
+          </Button>
+          <CancelQuote disabled={pending} />
+        </div>
+        <div className="hidden flex-1 sm:block" />
         <Button
           type="submit"
           size="lg"
