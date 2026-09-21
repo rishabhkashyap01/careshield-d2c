@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
+import { useRevealInvalid } from '@/hooks/useRevealInvalid';
 import { useSubmit } from '@/hooks/useSubmit';
 import { ArrowRightIcon, HeartPulseIcon, ShieldIcon } from '../icons';
 import { Alert, Button, FieldError } from '../ui';
@@ -27,6 +28,8 @@ export function DetailsStep() {
   const onSubmit = useSubmit(quoteAction);
   const errors = state.status === 'error' ? (state.fieldErrors ?? {}) : {};
   const ageRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  useRevealInvalid(formRef, state, Object.keys(errors).length > 0);
 
   const bump = (delta: number) => {
     const el = ageRef.current;
@@ -38,6 +41,7 @@ export function DetailsStep() {
 
   return (
     <form
+      ref={formRef}
       onSubmit={onSubmit}
       noValidate
       aria-busy={pending}
@@ -57,12 +61,6 @@ export function DetailsStep() {
           <Alert tone="info" title="Changing your details" role="status">
             You’ll get a fresh price and a new 15-minute lock, and you’ll answer the health
             questions again. Your current quote stays available until you submit.
-          </Alert>
-        )}
-
-        {state.status === 'error' && state.message && (
-          <Alert tone="error" title="We couldn’t calculate your premium">
-            {state.message}
           </Alert>
         )}
 
@@ -190,21 +188,32 @@ export function DetailsStep() {
         </div>
       </div>
 
-      <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur sm:flex-row sm:justify-end">
-        {quote && (
-          <Button type="button" variant="secondary" onClick={backToQuote} disabled={pending}>
-            Back to my quote
-          </Button>
+      <div className="space-y-3 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur">
+        {state.status === 'error' && state.message && (
+          <Alert
+            tone="error"
+            title="We couldn’t calculate your premium"
+            className="max-h-[38dvh] animate-fade-up overflow-y-auto [animation-duration:250ms]"
+          >
+            {state.message}
+          </Alert>
         )}
-        <Button
-          type="submit"
-          size="lg"
-          pending={pending}
-          pendingLabel="Calculating…"
-          className="sm:min-w-52"
-        >
-          See my price <ArrowRightIcon className="h-4 w-4" />
-        </Button>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          {quote && (
+            <Button type="button" variant="secondary" onClick={backToQuote} disabled={pending}>
+              Back to my quote
+            </Button>
+          )}
+          <Button
+            type="submit"
+            size="lg"
+            pending={pending}
+            pendingLabel="Calculating…"
+            className="sm:min-w-52"
+          >
+            See my price <ArrowRightIcon className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </form>
   );

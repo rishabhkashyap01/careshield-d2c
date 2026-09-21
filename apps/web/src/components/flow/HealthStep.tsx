@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useRef } from 'react';
 import { submitDeclaration } from '@/app/actions';
+import { useRevealInvalid } from '@/hooks/useRevealInvalid';
 import { useSubmit } from '@/hooks/useSubmit';
 import type { DeclarationState } from '@/lib/types';
 import {
@@ -42,9 +43,12 @@ export function HealthStep() {
   const errors = state.status === 'error' ? (state.fieldErrors ?? {}) : {};
   const locked = pending || expired;
   const onSubmit = useSubmit(action, () => !locked);
+  const formRef = useRef<HTMLFormElement>(null);
+  useRevealInvalid(formRef, state, Object.keys(errors).length > 0);
 
   return (
     <form
+      ref={formRef}
       onSubmit={onSubmit}
       noValidate
       aria-busy={pending}
@@ -59,30 +63,6 @@ export function HealthStep() {
             Answer honestly — an inaccurate declaration can make your policy invalid.
           </p>
         </div>
-
-        {state.status === 'error' && !state.expired && !expired && (
-          <Alert tone="error" title={state.message}>
-            {state.reasons && (
-              <ul className="list-disc space-y-1 pl-5">
-                {state.reasons.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
-            )}
-            {state.recalculate && (
-              <Button
-                type="button"
-                variant="secondary"
-                className="mt-3"
-                onClick={() => recalculate({ hasPreExistingConditions: 'yes' })}
-                pending={recalculating}
-                pendingLabel="Recalculating…"
-              >
-                Recalculate with pre-existing conditions
-              </Button>
-            )}
-          </Alert>
-        )}
 
         <div className="space-y-2.5">
           {QUESTIONS.map(([name, legend, Icon]) => (
@@ -125,24 +105,53 @@ export function HealthStep() {
         </p>
       </div>
 
-      <div className="relative flex flex-col-reverse gap-3 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur sm:flex-row sm:items-center">
-        <div className="flex items-center justify-between gap-2 sm:justify-start">
-          <Button type="button" variant="ghost" onClick={editDetails} disabled={pending}>
-            <ArrowLeftIcon className="h-4 w-4" /> Back
+      <div className="relative space-y-3 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur">
+        {state.status === 'error' && !state.expired && !expired && (
+          <Alert
+            tone="error"
+            title={state.message}
+            className="max-h-[38dvh] animate-fade-up overflow-y-auto [animation-duration:250ms]"
+          >
+            {state.reasons && (
+              <ul className="list-disc space-y-1 pl-5">
+                {state.reasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            )}
+            {state.recalculate && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-3 w-full sm:w-auto"
+                onClick={() => recalculate({ hasPreExistingConditions: 'yes' })}
+                pending={recalculating}
+                pendingLabel="Recalculating…"
+              >
+                Recalculate with pre-existing conditions
+              </Button>
+            )}
+          </Alert>
+        )}
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center justify-between gap-2 sm:justify-start">
+            <Button type="button" variant="ghost" onClick={editDetails} disabled={pending}>
+              <ArrowLeftIcon className="h-4 w-4" /> Back
+            </Button>
+            <CancelQuote disabled={pending} />
+          </div>
+          <div className="hidden flex-1 sm:block" />
+          <Button
+            type="submit"
+            size="lg"
+            disabled={locked}
+            pending={pending}
+            pendingLabel="Checking eligibility…"
+            className="w-full sm:w-auto sm:min-w-56"
+          >
+            Continue to payment <ArrowRightIcon className="h-4 w-4" />
           </Button>
-          <CancelQuote disabled={pending} />
         </div>
-        <div className="hidden flex-1 sm:block" />
-        <Button
-          type="submit"
-          size="lg"
-          disabled={locked}
-          pending={pending}
-          pendingLabel="Checking eligibility…"
-          className="w-full sm:w-auto sm:min-w-56"
-        >
-          Continue to payment <ArrowRightIcon className="h-4 w-4" />
-        </Button>
       </div>
     </form>
   );

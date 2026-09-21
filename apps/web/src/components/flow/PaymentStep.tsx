@@ -100,12 +100,6 @@ export function PaymentStep() {
           </p>
         </div>
 
-        {state.status === 'error' && !state.expired && !expired && (
-          <Alert tone="error" title="Payment not completed">
-            {state.message}
-          </Alert>
-        )}
-
         <section
           aria-labelledby="summary-heading"
           className="rounded-2xl border border-slate-200 p-4"
@@ -162,6 +156,16 @@ export function PaymentStep() {
       </div>
 
       <div className="relative space-y-2 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur">
+        {state.status === 'error' && !state.expired && !expired && (
+          <Alert
+            tone="error"
+            title="Payment not completed"
+            className="max-h-[38dvh] animate-fade-up overflow-y-auto [animation-duration:250ms]"
+          >
+            {state.message}
+          </Alert>
+        )}
+
         <div className="flex items-center justify-between gap-2">
           <Button type="button" variant="ghost" onClick={editDetails} disabled={pending}>
             <ArrowLeftIcon className="h-4 w-4" /> Change details

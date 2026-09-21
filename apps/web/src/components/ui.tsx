@@ -74,11 +74,13 @@ export function Alert({
   title,
   children,
   role = 'alert',
+  className = '',
 }: {
   tone: 'error' | 'warning' | 'success' | 'info';
   title: string;
   children?: ReactNode;
   role?: 'alert' | 'status';
+  className?: string;
 }) {
   const tones = {
     error: 'border-rose-200 bg-rose-50 text-rose-900',
@@ -87,7 +89,7 @@ export function Alert({
     info: 'border-brand-200 bg-brand-50 text-brand-900',
   } as const;
   return (
-    <div role={role} className={`flex gap-3 rounded-2xl border p-4 ${tones[tone]}`}>
+    <div role={role} className={`flex gap-3 rounded-2xl border p-4 ${tones[tone]} ${className}`}>
       <AlertIcon className="mt-0.5 h-5 w-5 shrink-0 opacity-80" />
       <div className="min-w-0">
         <p className="font-semibold">{title}</p>
