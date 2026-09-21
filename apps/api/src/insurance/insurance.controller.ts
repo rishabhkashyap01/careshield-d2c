@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { CreateQuoteDto } from './dto/create-quote.dto.js';
+import { MedicalDeclarationDto } from './dto/medical-declaration.dto.js';
 import {
   type QuoteResponse,
   toQuoteResponse,
@@ -32,5 +33,15 @@ export class InsuranceController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<QuoteResponse> {
     return toQuoteResponse(await this.quotes.getQuote(id));
+  }
+
+  /** POST /api/v1/insurance/quote/:id/medical-declaration — journey step 2. */
+  @Post('quote/:id/medical-declaration')
+  @HttpCode(HttpStatus.OK)
+  async declare(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: MedicalDeclarationDto,
+  ): Promise<QuoteResponse> {
+    return toQuoteResponse(await this.quotes.declareMedicalHistory(id, dto));
   }
 }

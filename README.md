@@ -30,7 +30,7 @@ QUOTE_GENERATED → MEDICAL_DECLARED → PREMIUM_PAID → POLICY_ISSUED
 careshield-d2c/
 ├── apps/
 │   ├── api/        # NestJS REST API  (/api/v1/insurance/*)
-│   └── web/        # Next.js frontend
+│   └── web/        # Next.js 16 + Tailwind frontend (Server Actions)
 ├── docs/           # design notes (idempotency, transactions)
 └── docker-compose.yml   # local PostgreSQL
 ```
@@ -40,7 +40,7 @@ careshield-d2c/
 - [x] **Phase 1 — Schema & state:** `quotes` ↔ `policies` tables, status enum FSM, `NUMERIC(10,2)` money columns, `created_at` / `expires_at`.
 - [x] **Phase 2 — Quote API:** `POST /api/v1/insurance/quote` with strict validation (`age`, `hasPreExistingConditions`).
   Pricing: base ₹10,000; +50% if `age > 45`; +₹5,000 flat if pre-existing conditions. Save with `expires_at = now + 15 min`.
-- [ ] **Phase 3 — Frontend:** accessible Tailwind UI, countdown driven by server `expires_at` (disables payment at zero and prompts a recalculation), `useTransition` / `useActionState` pending state to block double-clicks.
+- [x] **Phase 3 — Frontend:** accessible Tailwind UI, countdown driven by server `expires_at` (disables payment at zero and prompts a recalculation), `useTransition` / `useActionState` pending state to block double-clicks.
 - [ ] **Phase 4 — Checkout:** `POST /api/v1/insurance/checkout` — quote conversion + policy creation in one atomic DB transaction with rollback; `Idempotency-Key` header to prevent double charges.
 
 ## Local development
@@ -51,6 +51,10 @@ cp apps/api/.env.example apps/api/.env
 npm install                                   # installs workspaces + generates Prisma client
 npm run db:migrate                            # applies prisma/migrations
 npm run api:dev                               # http://localhost:4000/api/v1/health
+
+# in a second terminal
+cp apps/web/.env.example apps/web/.env.local
+npm run web:dev                               # http://localhost:3000
 ```
 
 Tests: `npm run api:test` (unit) and `npm run api:test:db` (integration, needs the DB).

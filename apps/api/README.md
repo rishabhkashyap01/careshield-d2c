@@ -1,7 +1,7 @@
 # @careshield/api
 
 NestJS REST API for the CareShield Max D2C purchase journey.
-Done so far: **Phase 1** (database schema & state management) and **Phase 2** (quote API & premium engine).
+Done so far: **Phase 1** (schema & state), **Phase 2** (quote API & premium engine), plus the medical-declaration endpoint the Phase 3 UI needs.
 
 ## Quick start
 
@@ -113,6 +113,19 @@ Money is returned as 2-decimal **strings** so no JSON client turns it into a flo
 
 Returns the same shape. Use it to restore a quote after a page refresh; `isExpired` tells you whether the lock has passed.
 
+### `POST /api/v1/insurance/quote/:id/medical-declaration` (journey step 2)
+
+Body: six booleans (`hasDiabetes`, `hasHypertension`, `hasHeartDisease`, `isSmoker`, `hadMajorSurgeryLast5Years`, `hasTerminalIllness`) plus `confirmsAccuracy: true`. On success it moves the quote `QUOTE_GENERATED → MEDICAL_DECLARED` and stores the answers as JSON.
+
+| Response | When |
+| -------- | ---- |
+| 200 | Eligible; the quote advances |
+| 422 `NotEligible` | Terminal illness, or a declared condition the quote wasn't priced for (the UI offers to recalculate) |
+| 410 `QuoteExpired` | Past `expires_at` |
+| 409 | Already declared |
+
+The eligibility rules in `src/insurance/domain/eligibility.ts` are **placeholders**. Replace them with the product's real rules.
+
 ### Pricing (Task 2.2) — `src/insurance/domain/premium-calculator.ts`
 
 | Rule | Amount |
@@ -177,9 +190,9 @@ After changing `schema.prisma`, run `npm run db:migrate:dev -- --name <change>`.
 ## Tests
 
 ```bash
-npm test          # unit (22): state machine, quote lock, premium calculator
+npm test          # unit (29): state machine, quote lock, pricing, eligibility
 npm run test:db   # integration (21): schema rules against a migrated PostgreSQL
-npm run test:e2e  # HTTP (26): boots the app; quote pricing, lock, validation, health
+npm run test:e2e  # HTTP (38): quote, declaration, validation, health
 ```
 
 ## Stack notes
