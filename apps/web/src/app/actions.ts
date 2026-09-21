@@ -13,6 +13,7 @@ import type {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UNAVAILABLE =
   'We couldn’t reach our servers. Please check your connection and try again.';
+const DOWN = 'Our service is temporarily unavailable. Please try again in a moment.';
 
 /* -------------------------------------------------------------------------- */
 /* Step 1 — premium calculation & quote lock                                  */
@@ -58,7 +59,12 @@ export async function requestQuote(
   return {
     status: 'error',
     values,
-    message: res.status === 0 ? UNAVAILABLE : 'Something went wrong calculating your premium. Please try again.',
+    message:
+      res.status === 0
+        ? UNAVAILABLE
+        : res.status === 503
+          ? DOWN
+          : 'Something went wrong calculating your premium. Please try again.',
   };
 }
 
@@ -121,6 +127,8 @@ export async function submitDeclaration(
       return { status: 'error', message: 'Please check your answers.', fieldErrors: fieldErrorsFrom(body) };
     case 0:
       return { status: 'error', message: UNAVAILABLE };
+    case 503:
+      return { status: 'error', message: DOWN };
     default:
       return { status: 'error', message: 'Something went wrong. Please try again.' };
   }

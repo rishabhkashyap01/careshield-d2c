@@ -7,6 +7,15 @@ import type { Db } from '../quotes.repository.js';
 
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * An IN_PROGRESS key older than this cannot belong to a live request: the
+ * checkout transaction times out after 20 s, and a committed one marks the key
+ * COMPLETED in the same transaction. So it was left behind by an attempt that
+ * rolled back but couldn't release the key (e.g. the DB dropped mid-request),
+ * and a retry may safely take it over.
+ */
+export const STALE_IN_PROGRESS_MS = 60_000;
+
 /** Same key, different request body → client bug; refuse rather than guess. */
 export class IdempotencyKeyReusedError extends Error {
   constructor(readonly key: string) {
@@ -39,6 +48,7 @@ export function hashRequest(body: unknown): string {
  *  complete()  store the response — called INSIDE the checkout transaction, so
  *              "policy issued" and "key completed" commit or roll back together.
  *  release()   mark FAILED after a rollback so a retry with the same key runs again.
+ *              If even that fails (DB gone), the key is reclaimable once stale.
  */
 @Injectable()
 export class IdempotencyService {
@@ -85,8 +95,26 @@ export class IdempotencyService {
           status: existing.responseStatus!,
           body: existing.responseBody!,
         };
-      case IdempotencyStatus.IN_PROGRESS:
+      case IdempotencyStatus.IN_PROGRESS: {
+        if (
+          now.getTime() - existing.updatedAt.getTime() <
+          STALE_IN_PROGRESS_MS
+        ) {
+          throw new IdempotencyInProgressError(key);
+        }
+        // Abandoned claim — take it over, atomically (only one retry can win).
+        const { count } = await this.prisma.idempotencyKey.updateMany({
+          where: {
+            scope,
+            key,
+            status: IdempotencyStatus.IN_PROGRESS,
+            updatedAt: existing.updatedAt,
+          },
+          data: { status: IdempotencyStatus.IN_PROGRESS, updatedAt: now },
+        });
+        if (count === 1) return { kind: 'owned' };
         throw new IdempotencyInProgressError(key);
+      }
       case IdempotencyStatus.FAILED: {
         // A previous attempt rolled back. Re-claim it — atomically, so two
         // simultaneous retries can't both proceed.

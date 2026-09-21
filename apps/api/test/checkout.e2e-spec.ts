@@ -12,6 +12,7 @@ import { configureApp } from '../src/configure-app.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { MockPaymentGateway } from '../src/insurance/checkout/mock-payment-gateway.js';
 import { PolicyIssuer } from '../src/insurance/checkout/policy-issuer.service.js';
+import { hashRequest } from '../src/insurance/checkout/idempotency.service.js';
 
 const declaration = {
   hasDiabetes: false,
@@ -195,6 +196,29 @@ describe('POST /api/v1/insurance/checkout (e2e)', () => {
       for (const r of results.filter((r) => r.status === 409))
         expect(r.body.error).toBe('AlreadyPaid');
       expect(gateway.chargeCount - charges).toBe(1);
+      expect(await state(quoteId)).toEqual({
+        quote: 'POLICY_ISSUED',
+        policies: 1,
+      });
+    });
+
+    it('a key stuck IN_PROGRESS (e.g. DB dropped mid-checkout) is reclaimed once stale', async () => {
+      const quoteId = await declaredQuote();
+      const key = randomUUID();
+      const hash = hashRequest({ quoteId, paymentToken: 'tok_visa_4242' });
+      const insertStuck = (ageSeconds: number) => prisma.$executeRaw`
+        INSERT INTO idempotency_keys (scope, key, request_hash, status, quote_id, created_at, updated_at, expires_at)
+        VALUES ('checkout', ${key}, ${hash}, 'IN_PROGRESS', ${quoteId}::uuid,
+                now() - make_interval(secs => ${ageSeconds}), now() - make_interval(secs => ${ageSeconds}),
+                now() + interval '1 day')
+        ON CONFLICT (scope, key) DO UPDATE SET updated_at = EXCLUDED.updated_at, status = 'IN_PROGRESS'`;
+
+      await insertStuck(10); // recent → still treated as running
+      expect((await pay(quoteId, key)).status).toBe(409);
+
+      await insertStuck(120); // 2 minutes old → abandoned, safe to take over
+      const res = await pay(quoteId, key).expect(201);
+      expect(res.body.status).toBe('POLICY_ISSUED');
       expect(await state(quoteId)).toEqual({
         quote: 'POLICY_ISSUED',
         policies: 1,

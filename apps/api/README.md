@@ -241,6 +241,23 @@ A test injects a crash right **after** the policy INSERT. It confirms that no po
 
 Keys are kept for 24 hours (`expires_at`). Add a scheduled cleanup before going to production.
 
+## Health checks
+
+| Endpoint | Question it answers | Touches DB? | Responses |
+| -------- | ------------------- | ----------- | --------- |
+| `GET /api/v1/health/live` | Is the process running? | No | always `200 {status:"ok", uptimeSeconds}` |
+| `GET /api/v1/health/ready` | Can it serve requests right now? | `SELECT 1`, 2 s timeout | `200 {status:"ok", database:"up", latencyMs}` or `503 {status:"error", database:"down"|"timeout", latencyMs}` |
+| `GET /api/v1/health` | Alias of `/ready` | | |
+
+- Use **live** for a restart probe. A database outage should not make the platform restart healthy API servers in a loop.
+- Use **ready** to decide whether to route traffic.
+- DB connections time out after `DB_CONNECT_TIMEOUT_MS` (default 5000), so an unreachable host fails fast instead of hanging.
+- The API starts even while the DB is down. It reports "not ready" and recovers on its own when the DB comes back.
+
+While the database is unavailable, every endpoint that needs it returns **`503 ServiceUnavailable`** with `Retry-After: 5` (see `src/common/database-unavailable.filter.ts`), not a bare 500. Nothing is written and nothing is charged.
+
+If the database drops during a checkout, the idempotency key can't be released. After 60 s it counts as abandoned (a checkout transaction can't run longer than 20 s), and a retry with the same key takes it over.
+
 ## Migrations
 
 | Migration | Contents |
@@ -254,9 +271,9 @@ After changing `schema.prisma`, run `npm run db:migrate:dev -- --name <change>`.
 ## Tests
 
 ```bash
-npm test          # unit (29): state machine, quote lock, pricing, eligibility
+npm test          # unit (48): state machine, quote lock, pricing, eligibility, health, DB-error detection
 npm run test:db   # integration (21): schema rules against a migrated PostgreSQL
-npm run test:e2e  # HTTP (55): quote, declaration, checkout (concurrency, rollback, replay), health
+npm run test:e2e  # HTTP (66): quote, declaration, checkout (concurrency, rollback, replay), health, database outage
 ```
 
 ## Stack notes

@@ -69,6 +69,7 @@ async function toPaid(id: string) {
 beforeAll(async () => {
   const config = {
     getOrThrow: () => process.env.DATABASE_URL!,
+    get: () => undefined,
   } as unknown as ConfigService;
   prisma = new PrismaService(config);
   await prisma.$connect();

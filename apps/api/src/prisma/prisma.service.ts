@@ -10,9 +10,20 @@ export class PrismaService
 {
   constructor(config: ConfigService) {
     const connectionString = config.getOrThrow<string>('DATABASE_URL');
-    super({ adapter: new PrismaPg({ connectionString }) });
+    super({
+      adapter: new PrismaPg({
+        connectionString,
+        // Without this, an unreachable DB host (network outage, firewall that
+        // drops packets) makes every query — and the health check — hang
+        // forever instead of failing.
+        connectionTimeoutMillis: Number(
+          config.get('DB_CONNECT_TIMEOUT_MS') ?? 5000,
+        ),
+      }),
+    });
   }
 
+  /** Connects lazily: the API still starts (and reports "not ready") if the DB is down. */
   async onModuleInit(): Promise<void> {
     await this.$connect();
   }
