@@ -2,7 +2,6 @@
  * POST /api/v1/insurance/quote — Phase 2 end-to-end tests.
  * Boots the real Nest app against a migrated PostgreSQL (DATABASE_URL).
  */
-import 'dotenv/config';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -105,43 +104,6 @@ describe('POST /api/v1/insurance/quote (e2e)', () => {
       for (const v of Object.values(res.body.premium)) {
         expect(typeof v).toBe('string');
       }
-    });
-
-    it('GET /quote/:id returns the same locked quote', async () => {
-      const created = await post({
-        age: 46,
-        hasPreExistingConditions: false,
-      }).expect(201);
-      const res = await request(app.getHttpServer())
-        .get(`${QUOTE}/${created.body.quoteId}`)
-        .expect(200);
-      expect(res.body.premium).toEqual(created.body.premium);
-      expect(res.body.expiresAt).toBe(created.body.expiresAt);
-    });
-
-    it('GET reports isExpired once the lock has passed', async () => {
-      const created = new Date(Date.now() - 20 * 60_000);
-      const q = await prisma.quote.create({
-        data: {
-          age: 30,
-          hasPreExistingConditions: false,
-          basePremium: '10000.00',
-          totalPremium: '10000.00',
-          createdAt: created,
-          expiresAt: new Date(created.getTime() + 15 * 60_000),
-        },
-      });
-      const res = await request(app.getHttpServer())
-        .get(`${QUOTE}/${q.id}`)
-        .expect(200);
-      expect(res.body.isExpired).toBe(true);
-    });
-
-    it('GET unknown id → 404, malformed id → 400', async () => {
-      await request(app.getHttpServer())
-        .get(`${QUOTE}/7b1e9a3c-1f2d-4e5a-9b6c-0d1e2f3a4b5c`)
-        .expect(404);
-      await request(app.getHttpServer()).get(`${QUOTE}/not-a-uuid`).expect(400);
     });
   });
 

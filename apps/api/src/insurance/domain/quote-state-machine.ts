@@ -50,14 +50,6 @@ export function canTransition(from: QuoteStatus, to: QuoteStatus): boolean {
   return QUOTE_TRANSITIONS[from].includes(to);
 }
 
-export function nextStatus(from: QuoteStatus): QuoteStatus | null {
-  return QUOTE_TRANSITIONS[from][0] ?? null;
-}
-
-export function isTerminal(status: QuoteStatus): boolean {
-  return QUOTE_TRANSITIONS[status].length === 0;
-}
-
 export function requiresValidLock(to: QuoteStatus): boolean {
   return LOCK_GUARDED_TARGETS.has(to);
 }

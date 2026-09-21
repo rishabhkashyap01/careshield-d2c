@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { AlertIcon } from './icons';
 
-export function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
+function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />

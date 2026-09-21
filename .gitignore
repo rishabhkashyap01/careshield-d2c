@@ -1,26 +1,15 @@
-# deps
 node_modules/
-.pnpm-store/
-
-# builds
 dist/
-build/
 .next/
-out/
 coverage/
 *.tsbuildinfo
 
-# env
+# env files (commit only the examples)
 .env
 .env.*
 !.env.example
 
-# logs
 *.log
-npm-debug.log*
-
-# OS / editor
 .DS_Store
 .idea/
-.vscode/*
-!.vscode/extensions.json
+.vscode/

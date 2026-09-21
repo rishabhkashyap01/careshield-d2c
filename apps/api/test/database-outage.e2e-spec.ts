@@ -3,7 +3,6 @@
  * PrismaService pointed at (a) a port nothing listens on — "refused", and
  * (b) a non-routable address — "black hole", the case that used to hang.
  */
-import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';

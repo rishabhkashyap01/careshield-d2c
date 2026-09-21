@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';

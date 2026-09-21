@@ -4,7 +4,6 @@
  *
  *   docker compose up -d && npm run db:migrate && npm run test:db
  */
-import 'dotenv/config';
 import type { ConfigService } from '@nestjs/config';
 import { Prisma } from '../../src/generated/prisma/client.js';
 import { QuoteStatus } from '../../src/generated/prisma/enums.js';

@@ -44,10 +44,6 @@ export class QuotesService {
     return quote;
   }
 
-  getQuote(id: string): Promise<Quote> {
-    return this.quotes.findByIdOrThrow(id);
-  }
-
   /**
    * Journey step 2: record the medical declaration and advance the quote
    * QUOTE_GENERATED → MEDICAL_DECLARED. Only allowed while the quote lock is

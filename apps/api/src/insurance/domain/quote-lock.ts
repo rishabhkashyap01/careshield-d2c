@@ -13,11 +13,3 @@ export function isQuoteExpired(
 ): boolean {
   return now.getTime() > quote.expiresAt.getTime();
 }
-
-/** Milliseconds left on the lock (0 once expired). */
-export function remainingLockMs(
-  quote: { expiresAt: Date },
-  now: Date = new Date(),
-): number {
-  return Math.max(0, quote.expiresAt.getTime() - now.getTime());
-}

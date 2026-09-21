@@ -17,7 +17,6 @@ export interface Quote {
     total: string;
   };
   createdAt: string;
-  medicalDeclaredAt: string | null;
   expiresAt: string;
   lockDurationSeconds: number;
   serverTime: string;
@@ -29,11 +28,9 @@ export interface Quote {
  * Request: header `Idempotency-Key: <uuid>`, body `{ quoteId, paymentToken }`.
  */
 export interface IssuedPolicy {
-  policyId: string;
   policyNumber: string;
   quoteId: string;
   status: 'POLICY_ISSUED';
-  policyStatus: 'ACTIVE' | 'CANCELLED';
   premiumPaid: string;
   currency: string;
   paymentReference: string;

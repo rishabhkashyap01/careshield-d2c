@@ -1,5 +1,4 @@
 /** POST /api/v1/insurance/quote/:id/medical-declaration — journey step 2. */
-import 'dotenv/config';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -51,7 +50,6 @@ describe('medical declaration (e2e)', () => {
     const id = await newQuote();
     const res = await declare(id, clean).expect(200);
     expect(res.body.status).toBe('MEDICAL_DECLARED');
-    expect(res.body.medicalDeclaredAt).toEqual(expect.any(String));
 
     const row = await prisma.quote.findUniqueOrThrow({ where: { id } });
     expect(row.status).toBe('MEDICAL_DECLARED');

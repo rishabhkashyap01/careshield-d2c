@@ -12,11 +12,6 @@ export function configureApp(app: INestApplication): INestApplication {
     new DatabaseUnavailableFilter(app.get(HttpAdapterHost).httpAdapter),
     new DomainExceptionFilter(),
   );
-  app.enableCors({
-    origin: (process.env.WEB_ORIGIN ?? 'http://localhost:3000').split(','),
-    allowedHeaders: ['Content-Type', 'Idempotency-Key'],
-    methods: ['GET', 'POST'],
-  });
   app.enableShutdownHooks();
   return app;
 }

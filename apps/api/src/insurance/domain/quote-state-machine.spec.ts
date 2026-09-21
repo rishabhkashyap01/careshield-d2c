@@ -3,15 +3,12 @@ import {
   assertTransition,
   canTransition,
   InvalidQuoteTransitionError,
-  isTerminal,
-  nextStatus,
   requiresValidLock,
 } from './quote-state-machine.js';
 import {
   computeExpiresAt,
   isQuoteExpired,
   QUOTE_LOCK_MS,
-  remainingLockMs,
 } from './quote-lock.js';
 
 const { QUOTE_GENERATED, MEDICAL_DECLARED, PREMIUM_PAID, POLICY_ISSUED } =
@@ -43,15 +40,6 @@ describe('quote state machine', () => {
     }
   });
 
-  it('walks the happy path in order and ends in a terminal state', () => {
-    const path: QuoteStatus[] = [QUOTE_GENERATED];
-    let s: QuoteStatus | null = QUOTE_GENERATED;
-    while ((s = nextStatus(s!))) path.push(s);
-    expect(path).toEqual(ALL);
-    expect(isTerminal(POLICY_ISSUED)).toBe(true);
-    expect(ALL.filter(isTerminal)).toEqual([POLICY_ISSUED]);
-  });
-
   it('only declaration and payment are guarded by the quote lock', () => {
     expect(ALL.filter(requiresValidLock)).toEqual([
       MEDICAL_DECLARED,
@@ -74,14 +62,6 @@ describe('quote lock', () => {
     expect(isQuoteExpired(quote, quote.expiresAt)).toBe(false);
     expect(isQuoteExpired(quote, new Date(quote.expiresAt.getTime() + 1))).toBe(
       true,
-    );
-  });
-
-  it('reports remaining time, never negative', () => {
-    const quote = { expiresAt: computeExpiresAt(now) };
-    expect(remainingLockMs(quote, now)).toBe(QUOTE_LOCK_MS);
-    expect(remainingLockMs(quote, new Date(now.getTime() + 20 * 60_000))).toBe(
-      0,
     );
   });
 });

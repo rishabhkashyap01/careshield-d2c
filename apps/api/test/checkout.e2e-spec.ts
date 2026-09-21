@@ -2,7 +2,6 @@
  * POST /api/v1/insurance/checkout — Phase 4 (atomic transactions & idempotency).
  * Real Nest app + real PostgreSQL; the only fake is the payment gateway.
  */
-import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
@@ -105,7 +104,6 @@ describe('POST /api/v1/insurance/checkout (e2e)', () => {
       expect(res.body).toMatchObject({
         quoteId,
         status: 'POLICY_ISSUED',
-        policyStatus: 'ACTIVE',
         premiumPaid: '20000.00',
         currency: 'INR',
       });

@@ -17,8 +17,6 @@ export interface QuoteResponse {
     total: string;
   };
   createdAt: string;
-  /** Set once the medical declaration (step 2) has been accepted. */
-  medicalDeclaredAt: string | null;
   /** Quote lock deadline — the frontend countdown (Phase 3) runs off this. */
   expiresAt: string;
   lockDurationSeconds: number;
@@ -43,7 +41,6 @@ export function toQuoteResponse(quote: Quote, now = new Date()): QuoteResponse {
       total: quote.totalPremium.toFixed(2),
     },
     createdAt: quote.createdAt.toISOString(),
-    medicalDeclaredAt: quote.medicalDeclaredAt?.toISOString() ?? null,
     expiresAt: quote.expiresAt.toISOString(),
     lockDurationSeconds: QUOTE_LOCK_MS / 1000,
     serverTime: now.toISOString(),

@@ -138,13 +138,6 @@ export async function submitDeclaration(
 /* Step 3 — bind & issue (payment)                                            */
 /* -------------------------------------------------------------------------- */
 
-const MOCK_TOKENS = new Set([
-  'tok_visa_4242',
-  'tok_mastercard_4444',
-  'tok_upi_success',
-  'tok_card_declined',
-]);
-
 /**
  * Calls POST /api/v1/insurance/checkout. `idempotencyKey` is minted
  * once per quote in the browser and reused on retries, so a double submit or a
@@ -160,7 +153,7 @@ export async function payPremium(
     return { status: 'error', message: 'Invalid payment request.' };
   }
   const paymentToken = String(formData.get('paymentToken') ?? '');
-  if (!MOCK_TOKENS.has(paymentToken)) {
+  if (!paymentToken) {
     return { status: 'error', message: 'Choose a payment method.' };
   }
 
@@ -177,6 +170,8 @@ export async function payPremium(
   switch (res.status) {
     case 410:
       return { status: 'error', expired: true, message: 'Your quote expired before payment. You have not been charged.' };
+    case 400:
+      return { status: 'error', message: 'That payment method isn’t available. You have not been charged.' };
     case 402:
       return { status: 'error', message: 'Your payment was declined. You have not been charged.' };
     case 404:

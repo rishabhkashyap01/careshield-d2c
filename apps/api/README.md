@@ -1,17 +1,33 @@
 # @careshield/api
 
-NestJS REST API for the CareShield Max D2C purchase journey.
-All four phases are done: **1** schema & state machine · **2** quote API & premium engine · **3** (medical-declaration endpoint for the UI) · **4** atomic checkout & idempotency.
-
-## Quick start
+NestJS REST API for the CareShield Max purchase journey. All routes are under `/api/v1`.
 
 ```bash
-# from the repo root
-docker compose up -d                 # PostgreSQL 16 on :5432
-cp apps/api/.env.example apps/api/.env
-npm install                          # also runs `prisma generate`
-npm run db:migrate -w @careshield/api
-npm run start:dev -w @careshield/api # http://localhost:4000/api/v1/health
+npm run start:dev        # http://localhost:4000 (needs apps/api/.env)
+npm test                 # unit tests (no database)
+npm run test:db          # schema rules against a migrated PostgreSQL
+npm run test:e2e         # whole API over HTTP
+npm run db:migrate       # apply migrations
+```
+
+## Code layout
+
+```
+src/
+├── main.ts, configure-app.ts   startup: /api/v1 prefix, validation pipe, error filters
+├── prisma/                     the shared database client
+├── common/                     strict validation + error → HTTP mapping (incl. DB outage → 503)
+├── health/                     /health/live and /health/ready
+└── insurance/
+    ├── domain/                 pure business rules: pricing, state machine, 15-min lock, eligibility
+    ├── dto/                    request validation and response shapes
+    ├── insurance.controller.ts POST /quote, POST /quote/:id/medical-declaration
+    ├── quotes.service.ts       quote logic
+    ├── quotes.repository.ts    the only code that changes a quote's status
+    └── checkout/               POST /checkout: transaction, idempotency, mock gateway
+prisma/
+├── schema.prisma               tables: quotes, policies, idempotency_keys
+└── migrations/                 SQL, including the hand-written CHECKs and triggers
 ```
 
 ## Data model
@@ -23,259 +39,84 @@ erDiagram
         uuid id PK
         smallint age
         boolean has_pre_existing_conditions
-        numeric_10_2 base_premium
-        numeric_10_2 age_loading
-        numeric_10_2 condition_loading
-        numeric_10_2 total_premium
-        char_3 currency "INR"
+        numeric base_premium
+        numeric age_loading
+        numeric condition_loading
+        numeric total_premium
         QuoteStatus status
         jsonb medical_declaration
-        timestamptz medical_declared_at
         timestamptz created_at
-        timestamptz updated_at
         timestamptz expires_at "created_at + 15 min"
     }
     policies {
         uuid id PK
-        varchar policy_number UK
+        varchar policy_number UK "CSM-2026-000001"
         uuid quote_id FK,UK
-        PolicyStatus status
-        numeric_10_2 premium_paid
-        char_3 currency
+        numeric premium_paid
         varchar payment_reference UK
         timestamptz coverage_start
         timestamptz coverage_end
-        timestamptz issued_at
-        timestamptz created_at
-        timestamptz updated_at
+    }
+    idempotency_keys {
+        varchar scope PK
+        varchar key PK
+        char request_hash
+        IdempotencyStatus status
+        jsonb response_body
     }
 ```
 
-### Quote state machine (Task 1.1)
+**State machine:** `QUOTE_GENERATED → MEDICAL_DECLARED → PREMIUM_PAID → POLICY_ISSUED`. It only moves forward, one step at a time.
 
-```
-QUOTE_GENERATED ──► MEDICAL_DECLARED ──► PREMIUM_PAID ──► POLICY_ISSUED
-     (quote)          (disclosures)        (payment)      (policy row exists)
-```
+It's enforced twice:
 
-Only forward, one-step transitions are legal. They're enforced in two layers:
+- **In code:** `quotes.repository.ts` does a compare-and-set `UPDATE … WHERE status = <from>`, so two simultaneous requests can't both advance a quote.
+- **In the database:** the trigger `enforce_quote_lifecycle` rejects skipped or reversed steps, declaring or paying after `expires_at`, and any change to a quote's price or expiry. The trigger `enforce_policy_from_paid_quote` only allows a policy for a paid quote, at exactly the quoted amount.
 
-| Layer | Where | What it does |
-| ----- | ----- | ------------ |
-| App   | `src/insurance/domain/quote-state-machine.ts` | Transition table, typed errors (`InvalidQuoteTransitionError`, `QuoteExpiredError`). |
-| App   | `QuotesRepository.transition()` | Compare-and-set `UPDATE … WHERE id = ? AND status = <from>` — two concurrent requests can't both advance a quote. |
-| DB    | trigger `enforce_quote_lifecycle` | Rejects skips/reversals, rejects declaring or paying after `expires_at`, requires a policy row before `POLICY_ISSUED`, and makes pricing fields + `expires_at` immutable. |
-| DB    | trigger `enforce_policy_from_paid_quote` | A policy can only be inserted for a `PREMIUM_PAID` quote, for exactly the quoted amount. |
+## Endpoints
 
-### Money & time (Task 1.2)
+| Endpoint | Success | Errors |
+| -------- | ------- | ------ |
+| `POST /insurance/quote` `{ age, hasPreExistingConditions }` | 201 quote | 400 validation |
+| `POST /insurance/quote/:id/medical-declaration` (6 booleans + `confirmsAccuracy: true`) | 200 quote | 400 · 404 · 409 already declared · 410 expired · 422 not eligible |
+| `POST /insurance/checkout` header `Idempotency-Key`, body `{ quoteId, paymentToken }` | 201 policy | 400 · 402 declined · 404 · 409 in progress / already paid / not declared · 410 expired · 422 key reused |
+| `GET /health/live` | 200 | never touches the database |
+| `GET /health/ready` (alias `/health`) | 200 | 503 `down` or `timeout` (2 s) |
 
-- Every money column is `NUMERIC(10,2)` (Prisma `Decimal`, surfaced as `Prisma.Decimal` — never a JS float). Max value ₹99,999,999.99.
-- CHECK `total_premium = base_premium + age_loading + condition_loading` keeps the stored breakdown honest.
-- All timestamps are `TIMESTAMPTZ(3)`. `expires_at` is computed from the server clock (`computeExpiresAt()` → `now + 15 min`), never from the client.
+- **Validation is strict:** no type conversion (`"30"` is not a number), unknown fields are rejected, and age must be a whole number from 18 to 99.
+- **Money is returned as strings** (`"15000.00"`).
+- **Quote responses include `expiresAt` and `serverTime`,** so the website can show an accurate countdown.
+- **If the database is unreachable,** every endpoint returns **503** with `Retry-After`.
 
-## Quote API (Phase 2)
+**Pricing** (`domain/premium-calculator.ts`) uses exact decimals:
 
-### `POST /api/v1/insurance/quote`
+| | Amount |
+| --- | --- |
+| Base premium | ₹10,000 |
+| Age over 45 (46 and up) | +50% of base |
+| Pre-existing conditions | +₹5,000 flat |
 
-Prices the applicant and saves a quote locked for 15 minutes.
+## Checkout: atomic and idempotent
 
-```bash
-curl -X POST http://localhost:4000/api/v1/insurance/quote \
-  -H 'Content-Type: application/json' \
-  -d '{"age": 52, "hasPreExistingConditions": true}'
-```
+1. **Claim the `Idempotency-Key`** by inserting it with status `IN_PROGRESS`. The primary key means exactly one of several simultaneous requests wins.
+   - A repeat of a **finished** request replays the saved response, with no new charge.
+   - A repeat of a **running** request gets 409.
+   - The **same key with a different body** gets 422.
+2. **One transaction:**
+   ```
+   SELECT … FROM quotes … FOR UPDATE   → second tab waits, then gets "already paid"
+   check declared + not expired        → before any charge
+   charge the gateway (same key)       → the gateway is idempotent too
+   MEDICAL_DECLARED → PREMIUM_PAID → insert policy → POLICY_ISSUED
+   mark the key COMPLETED, save the response
+   ```
+   Any error rolls back all of it. The key is then marked `FAILED`, so a retry with the same key runs again, and the gateway returns the original charge instead of charging twice.
+3. **A key orphaned** by a database drop (stuck `IN_PROGRESS` for more than 60 s) can be taken over by a retry.
 
-**201 Created**
+Mock payment tokens: `tok_visa_4242`, `tok_mastercard_4444` and `tok_upi_success` are approved; `tok_card_declined` is always declined. To use a real provider, replace `MockPaymentGateway` behind the `PAYMENT_GATEWAY` token.
 
-```json
-{
-  "quoteId": "f8d293c9-df58-4ff1-9aab-8290dae6c243",
-  "status": "QUOTE_GENERATED",
-  "applicant": { "age": 52, "hasPreExistingConditions": true },
-  "premium": {
-    "currency": "INR",
-    "base": "10000.00",
-    "ageLoading": "5000.00",
-    "conditionLoading": "5000.00",
-    "total": "20000.00"
-  },
-  "createdAt": "2026-09-21T18:46:54.489Z",
-  "expiresAt": "2026-09-21T19:01:54.489Z",
-  "lockDurationSeconds": 900,
-  "serverTime": "2026-09-21T18:46:54.545Z",
-  "isExpired": false
-}
-```
+## Notes
 
-Money is returned as 2-decimal **strings** so no JSON client turns it into a float. `serverTime` lets the frontend correct for a wrong device clock when it runs the countdown.
-
-### `GET /api/v1/insurance/quote/:id`
-
-Returns the same shape. Use it to restore a quote after a page refresh; `isExpired` tells you whether the lock has passed.
-
-### `POST /api/v1/insurance/quote/:id/medical-declaration` (journey step 2)
-
-Body: six booleans (`hasDiabetes`, `hasHypertension`, `hasHeartDisease`, `isSmoker`, `hadMajorSurgeryLast5Years`, `hasTerminalIllness`) plus `confirmsAccuracy: true`. On success it moves the quote `QUOTE_GENERATED → MEDICAL_DECLARED` and stores the answers as JSON.
-
-| Response | When |
-| -------- | ---- |
-| 200 | Eligible; the quote advances |
-| 422 `NotEligible` | Terminal illness, or a declared condition the quote wasn't priced for (the UI offers to recalculate) |
-| 410 `QuoteExpired` | Past `expires_at` |
-| 409 | Already declared |
-
-The eligibility rules in `src/insurance/domain/eligibility.ts` are **placeholders**. Replace them with the product's real rules.
-
-### Pricing (Task 2.2) — `src/insurance/domain/premium-calculator.ts`
-
-| Rule | Amount |
-| ---- | ------ |
-| Base premium | ₹10,000.00 |
-| `age > 45` (46 and over; 45 is not loaded) | + 50% of base = ₹5,000.00 |
-| `hasPreExistingConditions: true` | + ₹5,000.00 flat |
-
-| Age | Pre-existing | Total |
-| --- | ------------ | ----- |
-| 30 | no | ₹10,000.00 |
-| 30 | yes | ₹15,000.00 |
-| 46 | no | ₹15,000.00 |
-| 46 | yes | ₹20,000.00 |
-
-All arithmetic uses `Prisma.Decimal`, never JS numbers.
-
-### Validation (Task 2.1)
-
-Strict by design (`src/common/validation.ts`, `src/insurance/dto/create-quote.dto.ts`):
-
-- `age` must be a whole number from **18 to 99** (the eligibility window is an assumption; change `MIN_ELIGIBLE_AGE` / `MAX_ELIGIBLE_AGE`).
-- `hasPreExistingConditions` must be a real JSON boolean.
-- No type coercion: `"30"` and `"true"` are rejected, not converted.
-- Unknown fields are rejected, so a client can't send its own `totalPremium` or `expiresAt`.
-
-**400 Bad Request** example:
-
-```json
-{
-  "statusCode": 400,
-  "error": "ValidationError",
-  "message": "Request validation failed",
-  "details": [
-    { "field": "age", "errors": ["age must be a whole number"] },
-    { "field": "hasPreExistingConditions", "errors": ["hasPreExistingConditions must be true or false"] }
-  ]
-}
-```
-
-### Quote lock (Task 2.3)
-
-`QuotesService.createQuote()` takes **one** server timestamp and sets `created_at = now` and `expires_at = now + 15 min` explicitly, so the lock is exactly 900,000 ms. The client never supplies either value.
-
-### Error mapping — `src/common/domain-exception.filter.ts`
-
-| Domain error | HTTP |
-| ------------ | ---- |
-| `QuoteExpiredError` | 410 Gone — "recalculate your premium" |
-| `InvalidQuoteTransitionError` | 409 Conflict |
-| Quote not found | 404 |
-
-## Checkout (Phase 4)
-
-### `POST /api/v1/insurance/checkout`
-
-```bash
-curl -X POST http://localhost:4000/api/v1/insurance/checkout \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: 5f0c6a4e-2b1d-4c3e-9f8a-7b6c5d4e3f2a' \
-  -d '{"quoteId": "<declared quote id>", "paymentToken": "tok_visa_4242"}'
-```
-
-**201 Created**
-
-```json
-{
-  "policyId": "…", "policyNumber": "CSM-2026-000062", "quoteId": "…",
-  "status": "POLICY_ISSUED", "policyStatus": "ACTIVE",
-  "premiumPaid": "20000.00", "currency": "INR",
-  "paymentReference": "pay_23302f448bbd061d",
-  "coverageStart": "2026-09-22T…", "coverageEnd": "2027-09-22T…", "issuedAt": "2026-09-22T…"
-}
-```
-
-The mock payment tokens are `tok_visa_4242`, `tok_mastercard_4444` and `tok_upi_success` (approved), and `tok_card_declined` (always declined). The gateway is behind the `PAYMENT_GATEWAY` token, so a real provider can replace `MockPaymentGateway`. `MOCK_PAYMENT_LATENCY_MS` simulates network time (default 400).
-
-| Response | When |
-| -------- | ---- |
-| 201 | Paid and policy issued. A repeat of the same request returns the same body with the header `Idempotent-Replayed: true` |
-| 400 | `Idempotency-Key` header missing or malformed, or the body is invalid (a client can't send an `amount`) |
-| 402 `PaymentDeclined` | Card declined; nothing changed |
-| 404 | Unknown quote |
-| 409 `DeclarationRequired` / `AlreadyPaid` | Quote not declared yet, or already paid |
-| 409 `IdempotencyKeyInProgress` | Same key, request still running (`Retry-After: 1`) |
-| 410 `QuoteExpired` | Past `expires_at`; nobody is charged |
-| 422 `IdempotencyKeyReused` | Same key sent with a different body |
-
-### Task 4.1: one atomic transaction (`src/insurance/checkout/checkout.service.ts`)
-
-```
-BEGIN
-  SELECT … FROM quotes WHERE id = $1 FOR UPDATE   -- one checkout per quote at a time
-  check: MEDICAL_DECLARED, not expired
-  charge the gateway (idempotent on the same key)
-  quotes   MEDICAL_DECLARED → PREMIUM_PAID
-  policies INSERT (number from policy_number_seq)
-  quotes   PREMIUM_PAID → POLICY_ISSUED
-  idempotency_keys → COMPLETED + stored response
-COMMIT            -- any error ⇒ ROLLBACK of all of the above
-```
-
-A test injects a crash right **after** the policy INSERT. It confirms that no policy exists, the quote is still `MEDICAL_DECLARED` (not stuck in `PREMIUM_PAID`), and the key is released.
-
-### Task 4.2: idempotency (`src/insurance/checkout/idempotency.service.ts`, table `idempotency_keys`)
-
-1. **Claim.** The key is inserted as `IN_PROGRESS`. The `(scope, key)` primary key makes the claim atomic: exactly one of several simultaneous requests wins.
-2. **Repeat of a finished request.** The stored response is replayed. No second charge and no second policy.
-3. **Repeat while the first is still running.** Returns `409 IdempotencyKeyInProgress`.
-4. **Same key, different body.** Returns `422`. The request body is hashed with SHA-256.
-5. **After a rollback.** The key is marked `FAILED`, so a retry with the same key runs again. The gateway receives the same key and returns the **original** charge, so the customer is still charged once. Only successful responses are stored.
-6. **Two tabs with different keys** for the same quote are serialised by the row lock. The second one gets `409 AlreadyPaid` before any charge.
-
-Keys are kept for 24 hours (`expires_at`). Add a scheduled cleanup before going to production.
-
-## Health checks
-
-| Endpoint | Question it answers | Touches DB? | Responses |
-| -------- | ------------------- | ----------- | --------- |
-| `GET /api/v1/health/live` | Is the process running? | No | always `200 {status:"ok", uptimeSeconds}` |
-| `GET /api/v1/health/ready` | Can it serve requests right now? | `SELECT 1`, 2 s timeout | `200 {status:"ok", database:"up", latencyMs}` or `503 {status:"error", database:"down"|"timeout", latencyMs}` |
-| `GET /api/v1/health` | Alias of `/ready` | | |
-
-- Use **live** for a restart probe. A database outage should not make the platform restart healthy API servers in a loop.
-- Use **ready** to decide whether to route traffic.
-- DB connections time out after `DB_CONNECT_TIMEOUT_MS` (default 5000), so an unreachable host fails fast instead of hanging.
-- The API starts even while the DB is down. It reports "not ready" and recovers on its own when the DB comes back.
-
-While the database is unavailable, every endpoint that needs it returns **`503 ServiceUnavailable`** with `Retry-After: 5` (see `src/common/database-unavailable.filter.ts`), not a bare 500. Nothing is written and nothing is charged.
-
-If the database drops during a checkout, the idempotency key can't be released. After 60 s it counts as abandoned (a checkout transaction can't run longer than 20 s), and a retry with the same key takes it over.
-
-## Migrations
-
-| Migration | Contents |
-| --------- | -------- |
-| `20260921000000_init` | Enums, `quotes`, `policies`, indexes, FK (`ON DELETE RESTRICT`). Equivalent to `prisma migrate dev` output for `schema.prisma`. |
-| `20260921000100_quote_integrity_rules` | Hand-written: CHECK constraints + lifecycle triggers that Prisma's schema language can't express. |
-| `20260922000000_checkout_idempotency` | `idempotency_keys` table + CHECKs, and the `policy_number_seq` sequence. |
-
-After changing `schema.prisma`, run `npm run db:migrate:dev -- --name <change>`.
-
-## Tests
-
-```bash
-npm test          # unit (48): state machine, quote lock, pricing, eligibility, health, DB-error detection
-npm run test:db   # integration (21): schema rules against a migrated PostgreSQL
-npm run test:e2e  # HTTP (66): quote, declaration, checkout (concurrency, rollback, replay), health, database outage
-```
-
-## Stack notes
-
-NestJS 12 (ESM), Prisma 7 (`prisma-client` generator + `@prisma/adapter-pg`, config in `prisma.config.ts`), Vitest, oxlint.
+- **Migrations:** `20260921000000_init` is what `prisma migrate dev` generates from the schema. The other two are hand-written CHECKs, triggers and the idempotency table.
+- **Eligibility rules** in `domain/eligibility.ts` are placeholders.
+- **Idempotency keys** are kept for 24 hours. Add a scheduled cleanup before production.
