@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+# Prisma client is generated on `npm install` (postinstall) / `npm run db:generate`
+src/generated/

@@ -1,0 +1,87 @@
+// CareShield D2C — Phase 1: Database schema & state management
+//
+// Lifecycle of a purchase:
+//   quotes (QUOTE_GENERATED → MEDICAL_DECLARED → PREMIUM_PAID → POLICY_ISSUED)
+//     └── 1:1 ──> policies (created when the quote is bound & issued)
+//
+// Money is always NUMERIC(10,2) (Prisma `Decimal`), never float.
+// Timestamps are TIMESTAMPTZ(3) so they are unambiguous across time zones.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Finite state machine for a quote. Allowed transitions are enforced both in
+/// application code (src/insurance/domain/quote-state-machine.ts) and by a
+/// database trigger (see the init migration), so no code path can skip a step.
+enum QuoteStatus {
+  QUOTE_GENERATED
+  MEDICAL_DECLARED
+  PREMIUM_PAID
+  POLICY_ISSUED
+}
+
+enum PolicyStatus {
+  ACTIVE
+  CANCELLED
+}
+
+model Quote {
+  id                       String  @id @default(uuid()) @db.Uuid
+  /// Applicant age in whole years at the time of quoting.
+  age                      Int     @db.SmallInt
+  hasPreExistingConditions Boolean @map("has_pre_existing_conditions")
+
+  /// Premium breakdown, stored so the quote is deterministic and auditable.
+  basePremium      Decimal @map("base_premium") @db.Decimal(10, 2)
+  ageLoading       Decimal @default(0) @map("age_loading") @db.Decimal(10, 2)
+  conditionLoading Decimal @default(0) @map("condition_loading") @db.Decimal(10, 2)
+  totalPremium     Decimal @map("total_premium") @db.Decimal(10, 2)
+  currency         String  @default("INR") @db.Char(3)
+
+  status QuoteStatus @default(QUOTE_GENERATED)
+
+  /// Structured health disclosures captured in step 2 (Medical Declaration).
+  medicalDeclaration Json?     @map("medical_declaration")
+  medicalDeclaredAt  DateTime? @map("medical_declared_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Quote lock: the premium is only honoured until this instant (created_at + 15 min).
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  policy Policy?
+
+  @@index([status, expiresAt])
+  @@map("quotes")
+}
+
+model Policy {
+  id           String @id @default(uuid()) @db.Uuid
+  /// Human-facing contract ID, e.g. CSM-2026-000123.
+  policyNumber String @unique @map("policy_number") @db.VarChar(32)
+  /// One quote can be converted into at most one policy.
+  quoteId      String @unique @map("quote_id") @db.Uuid
+  quote        Quote  @relation(fields: [quoteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  status           PolicyStatus @default(ACTIVE)
+  premiumPaid      Decimal      @map("premium_paid") @db.Decimal(10, 2)
+  currency         String       @default("INR") @db.Char(3)
+  /// Reference returned by the (mock) payment processor; unique so one charge
+  /// can never back two policies.
+  paymentReference String       @unique @map("payment_reference") @db.VarChar(64)
+
+  coverageStart DateTime @map("coverage_start") @db.Timestamptz(3)
+  coverageEnd   DateTime @map("coverage_end") @db.Timestamptz(3)
+  issuedAt      DateTime @default(now()) @map("issued_at") @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("policies")
+}

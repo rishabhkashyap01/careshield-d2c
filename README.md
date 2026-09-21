@@ -37,7 +37,7 @@ careshield-d2c/
 
 ## Roadmap
 
-- [ ] **Phase 1 — Schema & state:** `quotes` ↔ `policies` tables, status enum FSM, `NUMERIC(10,2)` money columns, `created_at` / `expires_at`.
+- [x] **Phase 1 — Schema & state:** `quotes` ↔ `policies` tables, status enum FSM, `NUMERIC(10,2)` money columns, `created_at` / `expires_at`.
 - [ ] **Phase 2 — Quote API:** `POST /api/v1/insurance/quote` with strict validation (`age`, `hasPreExistingConditions`).
   Pricing: base ₹10,000; +50% if `age > 45`; +₹5,000 flat if pre-existing conditions. Save with `expires_at = now + 15 min`.
 - [ ] **Phase 3 — Frontend:** accessible Tailwind UI, countdown driven by server `expires_at` (disables payment at zero and prompts a recalculation), `useTransition` / `useActionState` pending state to block double-clicks.
@@ -46,7 +46,12 @@ careshield-d2c/
 ## Local development
 
 ```bash
-docker compose up -d   # starts PostgreSQL on :5432
+docker compose up -d                          # PostgreSQL 16 on :5432
+cp apps/api/.env.example apps/api/.env
+npm install                                   # installs workspaces + generates Prisma client
+npm run db:migrate                            # applies prisma/migrations
+npm run api:dev                               # http://localhost:4000/api/v1/health
 ```
 
-App-level setup instructions will be added as each phase lands.
+Tests: `npm run api:test` (unit) and `npm run api:test:db` (integration, needs the DB).
+See [apps/api/README.md](apps/api/README.md) for the data model and state machine.
