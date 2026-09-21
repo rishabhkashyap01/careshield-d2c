@@ -15,7 +15,7 @@ export function DetailsStep() {
   const {
     quoteState,
     detailsValues,
-    quoteAction,
+    submitDetails,
     quotePending: pending,
     quote,
     backToQuote,
@@ -25,7 +25,7 @@ export function DetailsStep() {
     detailsValues === quoteState.values
       ? quoteState
       : { status: 'idle' as const, values: detailsValues };
-  const onSubmit = useSubmit(quoteAction);
+  const onSubmit = useSubmit(submitDetails);
   const errors = state.status === 'error' ? (state.fieldErrors ?? {}) : {};
   const ageRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -59,8 +59,8 @@ export function DetailsStep() {
 
         {quote && (
           <Alert tone="info" title="Changing your details" role="status">
-            You’ll get a fresh price and a new 15-minute lock, and you’ll answer the health
-            questions again. Your current quote stays available until you submit.
+            Keep the same details and your current price and timer carry on. Change them and you’ll
+            get a fresh price with a new 15-minute lock, and answer the health questions again.
           </Alert>
         )}
 

@@ -27,7 +27,7 @@ You can always go back or cancel:
 - **Back** on the health step returns to your details, pre-filled. **Change details** on the payment step does the same.
 - **Back to my quote** returns to where you were without changing anything.
 - A completed **"Your details"** step in the progress bar can also be clicked.
-- Submitting new details gives a fresh price and lock. The declaration has to be answered again, because it belongs to the old quote.
+- Resubmitting the **same** details keeps your current quote: same price, and the timer keeps counting down. Only **changed** details request a new quote with a fresh 15-minute lock, and then the health questions have to be answered again.
 - **Cancel quote** asks "Discard this quote?", then clears the journey and closes the pop-up.
 
 Nothing is sent to the API when you cancel. An abandoned quote simply expires after its 15-minute lock, and an expired quote can never be paid.

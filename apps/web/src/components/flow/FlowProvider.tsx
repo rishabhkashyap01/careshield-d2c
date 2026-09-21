@@ -35,6 +35,11 @@ interface FlowContextValue {
   /** What the details form should show (blank after a quote is discarded). */
   detailsValues: QuoteInputs;
   quoteAction: (fd: FormData) => void;
+  /**
+   * Submit the details form. Unchanged details on a live quote just return to
+   * it (same quote, same price lock); only changed details request a new quote.
+   */
+  submitDetails: (fd: FormData) => void;
   quotePending: boolean;
   editDetails: () => void;
   backToQuote: () => void;
@@ -125,6 +130,24 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     [quoteAction, quoteState.values],
   );
 
+  const submitDetails = (fd: FormData) => {
+    const age = String(fd.get('age') ?? '').trim();
+    const pec = fd.get('hasPreExistingConditions');
+    const unchanged =
+      !!quote &&
+      !policy &&
+      !expired &&
+      /^\d{1,3}$/.test(age) &&
+      Number(age) === quote.applicant.age &&
+      (pec === 'yes' || pec === 'no') &&
+      (pec === 'yes') === quote.applicant.hasPreExistingConditions;
+    if (unchanged) {
+      setEditing(false); // same inputs → same deterministic price: keep the lock running
+      return;
+    }
+    quoteAction(fd);
+  };
+
   const view: FlowView = policy
     ? 'done'
     : !quote || isEditing
@@ -143,6 +166,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     quoteState,
     detailsValues: discarded ? INITIAL.values : quoteState.values,
     quoteAction,
+    submitDetails,
     quotePending,
     isEditing,
     editDetails: () => setEditing(true),
