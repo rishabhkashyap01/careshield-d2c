@@ -1,0 +1,13 @@
+{
+  "name": "careshield-d2c",
+  "version": "0.1.0",
+  "private": true,
+  "description": "D2C purchase journey for the CareShield Max health insurance plan (NestJS + Next.js + PostgreSQL).",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  }
+}
