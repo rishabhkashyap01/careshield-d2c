@@ -85,3 +85,32 @@ model Policy {
 
   @@map("policies")
 }
+
+enum IdempotencyStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+/// Task 4.2 — one row per client-supplied Idempotency-Key (per scope).
+/// The key is claimed with an INSERT (the primary key makes the claim atomic),
+/// completed in the SAME transaction that issues the policy, and released
+/// (FAILED) if that transaction rolls back so the client can safely retry.
+model IdempotencyKey {
+  scope          String            @db.VarChar(64)
+  key            String            @db.VarChar(255)
+  /// SHA-256 of the request body — the same key may not be reused for a different request.
+  requestHash    String            @map("request_hash") @db.Char(64)
+  status         IdempotencyStatus @default(IN_PROGRESS)
+  responseStatus Int?              @map("response_status") @db.SmallInt
+  responseBody   Json?             @map("response_body")
+  quoteId        String?           @map("quote_id") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Keys are honoured for 24 hours.
+  expiresAt      DateTime          @map("expires_at") @db.Timestamptz(3)
+
+  @@id([scope, key])
+  @@index([quoteId])
+  @@map("idempotency_keys")
+}

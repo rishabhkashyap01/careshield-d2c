@@ -1,7 +1,7 @@
 # @careshield/api
 
 NestJS REST API for the CareShield Max D2C purchase journey.
-Done so far: **Phase 1** (schema & state), **Phase 2** (quote API & premium engine), plus the medical-declaration endpoint the Phase 3 UI needs.
+All four phases are done: **1** schema & state machine · **2** quote API & premium engine · **3** (medical-declaration endpoint for the UI) · **4** atomic checkout & idempotency.
 
 ## Quick start
 
@@ -178,12 +178,76 @@ Strict by design (`src/common/validation.ts`, `src/insurance/dto/create-quote.dt
 | `InvalidQuoteTransitionError` | 409 Conflict |
 | Quote not found | 404 |
 
+## Checkout (Phase 4)
+
+### `POST /api/v1/insurance/checkout`
+
+```bash
+curl -X POST http://localhost:4000/api/v1/insurance/checkout \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: 5f0c6a4e-2b1d-4c3e-9f8a-7b6c5d4e3f2a' \
+  -d '{"quoteId": "<declared quote id>", "paymentToken": "tok_visa_4242"}'
+```
+
+**201 Created**
+
+```json
+{
+  "policyId": "…", "policyNumber": "CSM-2026-000062", "quoteId": "…",
+  "status": "POLICY_ISSUED", "policyStatus": "ACTIVE",
+  "premiumPaid": "20000.00", "currency": "INR",
+  "paymentReference": "pay_23302f448bbd061d",
+  "coverageStart": "2026-09-22T…", "coverageEnd": "2027-09-22T…", "issuedAt": "2026-09-22T…"
+}
+```
+
+The mock payment tokens are `tok_visa_4242`, `tok_mastercard_4444` and `tok_upi_success` (approved), and `tok_card_declined` (always declined). The gateway is behind the `PAYMENT_GATEWAY` token, so a real provider can replace `MockPaymentGateway`. `MOCK_PAYMENT_LATENCY_MS` simulates network time (default 400).
+
+| Response | When |
+| -------- | ---- |
+| 201 | Paid and policy issued. A repeat of the same request returns the same body with the header `Idempotent-Replayed: true` |
+| 400 | `Idempotency-Key` header missing or malformed, or the body is invalid (a client can't send an `amount`) |
+| 402 `PaymentDeclined` | Card declined; nothing changed |
+| 404 | Unknown quote |
+| 409 `DeclarationRequired` / `AlreadyPaid` | Quote not declared yet, or already paid |
+| 409 `IdempotencyKeyInProgress` | Same key, request still running (`Retry-After: 1`) |
+| 410 `QuoteExpired` | Past `expires_at`; nobody is charged |
+| 422 `IdempotencyKeyReused` | Same key sent with a different body |
+
+### Task 4.1: one atomic transaction (`src/insurance/checkout/checkout.service.ts`)
+
+```
+BEGIN
+  SELECT … FROM quotes WHERE id = $1 FOR UPDATE   -- one checkout per quote at a time
+  check: MEDICAL_DECLARED, not expired
+  charge the gateway (idempotent on the same key)
+  quotes   MEDICAL_DECLARED → PREMIUM_PAID
+  policies INSERT (number from policy_number_seq)
+  quotes   PREMIUM_PAID → POLICY_ISSUED
+  idempotency_keys → COMPLETED + stored response
+COMMIT            -- any error ⇒ ROLLBACK of all of the above
+```
+
+A test injects a crash right **after** the policy INSERT. It confirms that no policy exists, the quote is still `MEDICAL_DECLARED` (not stuck in `PREMIUM_PAID`), and the key is released.
+
+### Task 4.2: idempotency (`src/insurance/checkout/idempotency.service.ts`, table `idempotency_keys`)
+
+1. **Claim.** The key is inserted as `IN_PROGRESS`. The `(scope, key)` primary key makes the claim atomic: exactly one of several simultaneous requests wins.
+2. **Repeat of a finished request.** The stored response is replayed. No second charge and no second policy.
+3. **Repeat while the first is still running.** Returns `409 IdempotencyKeyInProgress`.
+4. **Same key, different body.** Returns `422`. The request body is hashed with SHA-256.
+5. **After a rollback.** The key is marked `FAILED`, so a retry with the same key runs again. The gateway receives the same key and returns the **original** charge, so the customer is still charged once. Only successful responses are stored.
+6. **Two tabs with different keys** for the same quote are serialised by the row lock. The second one gets `409 AlreadyPaid` before any charge.
+
+Keys are kept for 24 hours (`expires_at`). Add a scheduled cleanup before going to production.
+
 ## Migrations
 
 | Migration | Contents |
 | --------- | -------- |
 | `20260921000000_init` | Enums, `quotes`, `policies`, indexes, FK (`ON DELETE RESTRICT`). Equivalent to `prisma migrate dev` output for `schema.prisma`. |
 | `20260921000100_quote_integrity_rules` | Hand-written: CHECK constraints + lifecycle triggers that Prisma's schema language can't express. |
+| `20260922000000_checkout_idempotency` | `idempotency_keys` table + CHECKs, and the `policy_number_seq` sequence. |
 
 After changing `schema.prisma`, run `npm run db:migrate:dev -- --name <change>`.
 
@@ -192,7 +256,7 @@ After changing `schema.prisma`, run `npm run db:migrate:dev -- --name <change>`.
 ```bash
 npm test          # unit (29): state machine, quote lock, pricing, eligibility
 npm run test:db   # integration (21): schema rules against a migrated PostgreSQL
-npm run test:e2e  # HTTP (38): quote, declaration, validation, health
+npm run test:e2e  # HTTP (55): quote, declaration, checkout (concurrency, rollback, replay), health
 ```
 
 ## Stack notes

@@ -130,10 +130,15 @@ export async function submitDeclaration(
 /* Step 3 — bind & issue (payment)                                            */
 /* -------------------------------------------------------------------------- */
 
-const MOCK_TOKENS = new Set(['tok_visa_4242', 'tok_mastercard_4444', 'tok_upi_success']);
+const MOCK_TOKENS = new Set([
+  'tok_visa_4242',
+  'tok_mastercard_4444',
+  'tok_upi_success',
+  'tok_card_declined',
+]);
 
 /**
- * Calls POST /api/v1/insurance/checkout (Phase 4). `idempotencyKey` is minted
+ * Calls POST /api/v1/insurance/checkout. `idempotencyKey` is minted
  * once per quote in the browser and reused on retries, so a double submit or a
  * retry after a network blip can never charge twice.
  */
@@ -167,7 +172,9 @@ export async function payPremium(
     case 402:
       return { status: 'error', message: 'Your payment was declined. You have not been charged.' };
     case 404:
-      return { status: 'error', message: 'Online checkout isn’t available yet. You have not been charged.' };
+      return { status: 'error', message: 'We couldn’t find this quote. Please start again. You have not been charged.' };
+    case 422:
+      return { status: 'error', message: 'This payment request was already used. Please refresh and try again.' };
     case 409:
       return { status: 'error', message: typeof body?.message === 'string' ? body.message : 'This quote can’t be paid in its current state.' };
     // Outcome unknown (timeout / 5xx): the charge may or may not have gone

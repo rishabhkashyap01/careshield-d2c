@@ -1,7 +1,7 @@
 # @careshield/web
 
 Next.js 16 (App Router) + Tailwind CSS 4 frontend for the CareShield Max purchase journey.
-**Phase 3:** optimistic flow & expiry gate.
+Phases 3 & 4: the whole journey from quote to issued policy.
 
 ## Run it
 
@@ -24,7 +24,7 @@ Browser ──form submit──► Server Action (src/app/actions.ts) ──fetc
 | ---- | -- | ------------- | --- |
 | 1. Quote | `QuoteForm` | `requestQuote` | `POST /insurance/quote` |
 | 2. Declare | `DeclarationForm` | `submitDeclaration` | `POST /insurance/quote/:id/medical-declaration` |
-| 3. Pay | `PaymentForm` | `payPremium` | `POST /insurance/checkout` *(Phase 4)* |
+| 3. Pay | `PaymentForm` | `payPremium` | `POST /insurance/checkout` |
 
 ### Task 3.1: accessible UI that posts securely
 
@@ -51,20 +51,17 @@ Browser ──form submit──► Server Action (src/app/actions.ts) ──fetc
 
 1. `pending` disables the button and payment options and shows "Processing payment…", with `aria-busy` and a live status message.
 2. A synchronous `useRef` guard in `onSubmit` drops a second submit fired before React re-renders.
-3. One `Idempotency-Key` (a UUID) is created per quote and reused on retries. Phase 4 enforces it on the server.
+3. Each quote + payment method gets one `Idempotency-Key` (a UUID), reused on every retry of that request. The API stores the key, so a duplicate that reaches the server is still charged only once. Switching to another method is a new request with a new key, and the API's row lock on the quote still allows only one successful payment.
 
-Tested in a headless browser: a double-click, three more rapid clicks and Enter produced **one** checkout request.
+Tested in a headless browser against the real API: a double-click, three more rapid clicks and Enter produced **one** policy and **one** completed idempotency key in the database.
 
-## Checkout contract (implemented in Phase 4)
+The forms submit through `useSubmit` (`src/hooks/useSubmit.ts`) instead of the `action` prop. That stops React 19's automatic form reset, so the user's answers stay on screen when the server returns an error.
 
-```
-POST /api/v1/insurance/checkout
-Idempotency-Key: <uuid>
-{ "quoteId": "<uuid>", "paymentToken": "tok_visa_4242" }
+## Try the payment outcomes
 
-201 → { policyNumber, quoteId, status, premiumPaid, currency,
-        paymentReference, coverageStart, coverageEnd, issuedAt }
-410 → quote expired · 402 → payment declined · 409 → wrong state
-```
+| Payment method | Result |
+| -------------- | ------ |
+| Visa 4242 / Mastercard 4444 / UPI | Policy issued |
+| "Test card that is always declined" | 402. Nothing changes; pick another method and pay |
 
-Until Phase 4 lands, **Pay** shows "Online checkout isn't available yet. You have not been charged."
+The full checkout API is documented in [apps/api/README.md](../api/README.md#checkout-phase-4).

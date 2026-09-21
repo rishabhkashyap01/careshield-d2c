@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState, useRef, useState, type FormEvent } from 'react';
+import { useActionState, useRef } from 'react';
 import { payPremium } from '@/app/actions';
+import { useSubmit } from '@/hooks/useSubmit';
 import { formatMoney } from '@/lib/format';
 import type { IssuedPolicy, PaymentState, Quote } from '@/lib/types';
 import { Alert, Button } from './ui';
@@ -10,6 +11,7 @@ const METHODS = [
   { token: 'tok_visa_4242', label: 'Visa ending 4242' },
   { token: 'tok_mastercard_4444', label: 'Mastercard ending 4444' },
   { token: 'tok_upi_success', label: 'UPI · demo@okbank' },
+  { token: 'tok_card_declined', label: 'Test card that is always declined' },
 ] as const;
 
 /**
@@ -17,8 +19,11 @@ const METHODS = [
  *  1. `pending` from useActionState disables the button and the fieldset.
  *  2. A synchronous ref guard drops a second submit fired before React has
  *     re-rendered (e.g. a very fast double-click or Enter key repeat).
- *  3. One idempotency key per quote, reused on retries, so even a duplicate
- *     request that reaches the server is charged once (enforced in Phase 4).
+ *  3. An Idempotency-Key per (quote, payment method), reused on every retry of
+ *     that same request, so a duplicate that reaches the server is charged
+ *     once (enforced by the API). Switching method is a different request and
+ *     gets its own key; the API's row lock on the quote still guarantees at
+ *     most one successful payment per quote.
  */
 export function PaymentForm({
   quote,
@@ -31,13 +36,20 @@ export function PaymentForm({
   onPaid: (p: IssuedPolicy) => void;
   onExpired: () => void;
 }) {
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  // This component is keyed by quoteId, so a new quote starts with fresh keys.
+  const keys = useRef(new Map<string, string>());
+  const keyFor = (token: string) => {
+    let key = keys.current.get(token);
+    if (!key) keys.current.set(token, (key = crypto.randomUUID()));
+    return key;
+  };
   const inFlight = useRef(false);
 
   const [state, action, pending] = useActionState<PaymentState, FormData>(
     async (prev, fd) => {
       try {
-        const result = await payPremium(quote.quoteId, idempotencyKey, prev, fd);
+        const token = String(fd.get('paymentToken') ?? '');
+        const result = await payPremium(quote.quoteId, keyFor(token), prev, fd);
         if (result.status === 'success') onPaid(result.policy);
         if (result.status === 'error' && result.expired) onExpired();
         return result;
@@ -50,16 +62,16 @@ export function PaymentForm({
 
   const blocked = pending || expired;
 
-  function guard(e: FormEvent<HTMLFormElement>) {
-    if (inFlight.current || expired) {
-      e.preventDefault();
-      return;
-    }
+  // Synchronous guard: runs before React re-renders, so it catches a second
+  // click/Enter that arrives while `pending` is still false.
+  const onSubmit = useSubmit(action, () => {
+    if (inFlight.current || expired) return false;
     inFlight.current = true;
-  }
+    return true;
+  });
 
   return (
-    <form action={action} onSubmit={guard} aria-busy={pending} className="space-y-6">
+    <form onSubmit={onSubmit} aria-busy={pending} className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-slate-900">Pay &amp; get covered</h2>
         <p className="mt-1 text-slate-600">

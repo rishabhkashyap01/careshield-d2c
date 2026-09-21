@@ -1,5 +1,6 @@
 'use client';
 
+import { useSubmit } from '@/hooks/useSubmit';
 import type { QuoteFormState } from '@/lib/types';
 import { Alert, Button, FieldError, YesNo } from './ui';
 
@@ -13,8 +14,9 @@ export function QuoteForm({
   pending: boolean;
 }) {
   const errors = state.status === 'error' ? state.fieldErrors ?? {} : {};
+  const onSubmit = useSubmit(action);
   return (
-    <form action={action} noValidate aria-busy={pending} className="space-y-6">
+    <form onSubmit={onSubmit} noValidate aria-busy={pending} className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-slate-900">Get your price</h2>
         <p className="mt-1 text-slate-600">

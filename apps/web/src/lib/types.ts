@@ -25,13 +25,15 @@ export interface Quote {
 }
 
 /**
- * Contract for POST /api/v1/insurance/checkout (implemented in Phase 4).
+ * Response of POST /api/v1/insurance/checkout.
  * Request: header `Idempotency-Key: <uuid>`, body `{ quoteId, paymentToken }`.
  */
 export interface IssuedPolicy {
+  policyId: string;
   policyNumber: string;
   quoteId: string;
-  status: 'POLICY_ISSUED' | string;
+  status: 'POLICY_ISSUED';
+  policyStatus: 'ACTIVE' | 'CANCELLED';
   premiumPaid: string;
   currency: string;
   paymentReference: string;

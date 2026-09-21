@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { submitDeclaration } from '@/app/actions';
+import { useSubmit } from '@/hooks/useSubmit';
 import type { DeclarationState, Quote } from '@/lib/types';
 import { Alert, Button, FieldError, YesNo } from './ui';
 
@@ -38,9 +39,10 @@ export function DeclarationForm({
   );
   const errors = state.status === 'error' ? state.fieldErrors ?? {} : {};
   const locked = pending || expired;
+  const onSubmit = useSubmit(action, () => !locked);
 
   return (
-    <form action={action} noValidate aria-busy={pending} className="space-y-6">
+    <form onSubmit={onSubmit} noValidate aria-busy={pending} className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-slate-900">Medical declaration</h2>
         <p className="mt-1 text-slate-600">
