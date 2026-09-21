@@ -19,6 +19,9 @@ export class PrismaService
         connectionTimeoutMillis: Number(
           config.get('DB_CONNECT_TIMEOUT_MS') ?? 5000,
         ),
+        // Connections per instance. Keep this small on serverless, where
+        // many instances can run at once (set DB_POOL_MAX=3 on Vercel).
+        max: Number(config.get('DB_POOL_MAX') ?? 10),
       }),
     });
   }

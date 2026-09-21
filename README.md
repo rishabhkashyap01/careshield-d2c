@@ -28,6 +28,8 @@ npm run web:dev                           # terminal 2 → http://localhost:3000
 
 `npm test` runs every API suite: unit, database and end-to-end. They need the database running.
 
+**Deploying:** see [DEPLOY.md](DEPLOY.md). It covers GitHub, Neon and two Vercel projects, one for the API and one for the website.
+
 ## Where each task is implemented
 
 | Task | What | Where |

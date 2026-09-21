@@ -25,6 +25,7 @@ src/
     ├── quotes.service.ts       quote logic
     ├── quotes.repository.ts    the only code that changes a quote's status
     └── checkout/               POST /checkout: transaction, idempotency, mock gateway
+api/index.js                    Vercel serverless entry (wraps the compiled app in dist/)
 prisma/
 ├── schema.prisma               tables: quotes, policies, idempotency_keys
 └── migrations/                 SQL, including the hand-written CHECKs and triggers
