@@ -1,7 +1,7 @@
 # @careshield/api
 
 NestJS REST API for the CareShield Max D2C purchase journey.
-**Phase 1 (this commit): database schema & state management.**
+Done so far: **Phase 1** (database schema & state management) and **Phase 2** (quote API & premium engine).
 
 ## Quick start
 
@@ -73,6 +73,98 @@ Only forward, one-step transitions are legal. They're enforced in two layers:
 - CHECK `total_premium = base_premium + age_loading + condition_loading` keeps the stored breakdown honest.
 - All timestamps are `TIMESTAMPTZ(3)`. `expires_at` is computed from the server clock (`computeExpiresAt()` → `now + 15 min`), never from the client.
 
+## Quote API (Phase 2)
+
+### `POST /api/v1/insurance/quote`
+
+Prices the applicant and saves a quote locked for 15 minutes.
+
+```bash
+curl -X POST http://localhost:4000/api/v1/insurance/quote \
+  -H 'Content-Type: application/json' \
+  -d '{"age": 52, "hasPreExistingConditions": true}'
+```
+
+**201 Created**
+
+```json
+{
+  "quoteId": "f8d293c9-df58-4ff1-9aab-8290dae6c243",
+  "status": "QUOTE_GENERATED",
+  "applicant": { "age": 52, "hasPreExistingConditions": true },
+  "premium": {
+    "currency": "INR",
+    "base": "10000.00",
+    "ageLoading": "5000.00",
+    "conditionLoading": "5000.00",
+    "total": "20000.00"
+  },
+  "createdAt": "2026-09-21T18:46:54.489Z",
+  "expiresAt": "2026-09-21T19:01:54.489Z",
+  "lockDurationSeconds": 900,
+  "serverTime": "2026-09-21T18:46:54.545Z",
+  "isExpired": false
+}
+```
+
+Money is returned as 2-decimal **strings** so no JSON client turns it into a float. `serverTime` lets the frontend correct for a wrong device clock when it runs the countdown.
+
+### `GET /api/v1/insurance/quote/:id`
+
+Returns the same shape. Use it to restore a quote after a page refresh; `isExpired` tells you whether the lock has passed.
+
+### Pricing (Task 2.2) — `src/insurance/domain/premium-calculator.ts`
+
+| Rule | Amount |
+| ---- | ------ |
+| Base premium | ₹10,000.00 |
+| `age > 45` (46 and over; 45 is not loaded) | + 50% of base = ₹5,000.00 |
+| `hasPreExistingConditions: true` | + ₹5,000.00 flat |
+
+| Age | Pre-existing | Total |
+| --- | ------------ | ----- |
+| 30 | no | ₹10,000.00 |
+| 30 | yes | ₹15,000.00 |
+| 46 | no | ₹15,000.00 |
+| 46 | yes | ₹20,000.00 |
+
+All arithmetic uses `Prisma.Decimal`, never JS numbers.
+
+### Validation (Task 2.1)
+
+Strict by design (`src/common/validation.ts`, `src/insurance/dto/create-quote.dto.ts`):
+
+- `age` must be a whole number from **18 to 99** (the eligibility window is an assumption; change `MIN_ELIGIBLE_AGE` / `MAX_ELIGIBLE_AGE`).
+- `hasPreExistingConditions` must be a real JSON boolean.
+- No type coercion: `"30"` and `"true"` are rejected, not converted.
+- Unknown fields are rejected, so a client can't send its own `totalPremium` or `expiresAt`.
+
+**400 Bad Request** example:
+
+```json
+{
+  "statusCode": 400,
+  "error": "ValidationError",
+  "message": "Request validation failed",
+  "details": [
+    { "field": "age", "errors": ["age must be a whole number"] },
+    { "field": "hasPreExistingConditions", "errors": ["hasPreExistingConditions must be true or false"] }
+  ]
+}
+```
+
+### Quote lock (Task 2.3)
+
+`QuotesService.createQuote()` takes **one** server timestamp and sets `created_at = now` and `expires_at = now + 15 min` explicitly, so the lock is exactly 900,000 ms. The client never supplies either value.
+
+### Error mapping — `src/common/domain-exception.filter.ts`
+
+| Domain error | HTTP |
+| ------------ | ---- |
+| `QuoteExpiredError` | 410 Gone — "recalculate your premium" |
+| `InvalidQuoteTransitionError` | 409 Conflict |
+| Quote not found | 404 |
+
 ## Migrations
 
 | Migration | Contents |
@@ -85,9 +177,9 @@ After changing `schema.prisma`, run `npm run db:migrate:dev -- --name <change>`.
 ## Tests
 
 ```bash
-npm test          # unit: state machine + quote lock (no DB)
-npm run test:db   # integration: 21 tests against a migrated PostgreSQL
-npm run test:e2e  # boots the app, hits /api/v1/health
+npm test          # unit (22): state machine, quote lock, premium calculator
+npm run test:db   # integration (21): schema rules against a migrated PostgreSQL
+npm run test:e2e  # HTTP (26): boots the app; quote pricing, lock, validation, health
 ```
 
 ## Stack notes

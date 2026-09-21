@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { InsuranceController } from './insurance.controller.js';
 import { QuotesRepository } from './quotes.repository.js';
+import { QuotesService } from './quotes.service.js';
 
-// Controllers and services for /api/v1/insurance/* arrive in Phase 2.
 @Module({
-  providers: [QuotesRepository],
-  exports: [QuotesRepository],
+  controllers: [InsuranceController],
+  providers: [QuotesRepository, QuotesService],
+  exports: [QuotesRepository, QuotesService],
 })
 export class InsuranceModule {}
