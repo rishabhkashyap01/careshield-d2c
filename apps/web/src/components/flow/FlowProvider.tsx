@@ -53,6 +53,12 @@ interface FlowContextValue {
 
   remainingMs: number;
   expired: boolean;
+  /**
+   * A payment was started in time and is being confirmed. The server has
+   * frozen the 15-minute clock for it, so the page must not show "expired".
+   */
+  paymentPending: boolean;
+  setPaymentPending: (pending: boolean) => void;
   markExpired: () => void;
   recalculate: (overrides?: Partial<QuoteInputs>) => void;
   recalculating: boolean;
@@ -96,6 +102,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   const [isEditing, setEditing] = useState(false);
   const [serverExpiredFor, setServerExpiredFor] = useState<string | null>(null);
   const [discarded, setDiscarded] = useState(false);
+  const [paymentPending, setPaymentPending] = useState(false);
 
   // Step 1 — useActionState drives the quote form's pending + error state.
   const [quoteState, quoteAction, quotePending] = useActionState<QuoteFormState, FormData>(
@@ -105,6 +112,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
       if (result.status === 'success') {
         setActive(activate(result.quote, timing));
         setPolicy(null);
+        setPaymentPending(false);
         setEditing(false);
       }
       return result;
@@ -118,7 +126,10 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   const quote = active?.quote ?? null;
   // The server can also tell us it expired (e.g. device clock very wrong).
   const expired =
-    !!quote && !policy && (timerExpired || quote.isExpired || serverExpiredFor === quote.quoteId);
+    !!quote &&
+    !policy &&
+    !paymentPending &&
+    (timerExpired || quote.isExpired || serverExpiredFor === quote.quoteId);
 
   // Recalculate (after expiry) re-submits the same inputs in a transition.
   const [recalculating, startRecalc] = useTransition();
@@ -171,17 +182,24 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     backToQuote: () => setEditing(false),
     remainingMs,
     expired,
+    paymentPending,
+    setPaymentPending,
     markExpired: () => quote && setServerExpiredFor(quote.quoteId),
     recalculate,
     recalculating,
     onDeclared: (q, timing) => setActive((a) => (a ? activate(q, timing) : a)),
-    onPaid: setPolicy,
+    onPaid: (p) => {
+      setPaymentPending(false);
+      setPolicy(p);
+    },
     startOver: () => {
+      setPaymentPending(false);
       setActive(null);
       setPolicy(null);
       setEditing(false);
     },
     cancelQuote: () => {
+      setPaymentPending(false);
       setDiscarded(true);
       setActive(null);
       setPolicy(null);

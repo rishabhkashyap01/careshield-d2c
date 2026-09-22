@@ -52,6 +52,7 @@ describe('POST /api/v1/insurance/checkout (e2e)', () => {
     prisma = app.get(PrismaService);
     gateway = app.get(MockPaymentGateway);
     issuer = app.get(PolicyIssuer);
+    gateway.webhookUrl = undefined; // this suite tests the request path only
   });
 
   beforeEach(async () => {
@@ -178,7 +179,7 @@ describe('POST /api/v1/insurance/checkout (e2e)', () => {
       expect(later.headers['idempotent-replayed']).toBe('true');
     });
 
-    it('two tabs with DIFFERENT keys for the same quote → one charge, the other gets 409 AlreadyPaid', async () => {
+    it('two tabs with DIFFERENT keys for the same quote → one charge, the others get 409', async () => {
       gateway.latencyMs = 300;
       const quoteId = await declaredQuote();
       const charges = gateway.chargeCount;
@@ -191,8 +192,10 @@ describe('POST /api/v1/insurance/checkout (e2e)', () => {
       const codes = results.map((r) => r.status).sort();
 
       expect(codes).toEqual([201, 409, 409]);
+      // While the first payment is in flight the others see PaymentInProgress;
+      // if it has already finished, AlreadyPaid.
       for (const r of results.filter((r) => r.status === 409))
-        expect(r.body.error).toBe('AlreadyPaid');
+        expect(['PaymentInProgress', 'AlreadyPaid']).toContain(r.body.error);
       expect(gateway.chargeCount - charges).toBe(1);
       expect(await state(quoteId)).toEqual({
         quote: 'POLICY_ISSUED',
@@ -251,17 +254,20 @@ describe('POST /api/v1/insurance/checkout (e2e)', () => {
   });
 
   describe('Task 4.1 — atomic transaction & rollback', () => {
-    it('a crash after the policy INSERT rolls everything back; a retry with the same key succeeds without a second charge', async () => {
+    it('a crash after the policy INSERT rolls the settlement back; the customer sees "processing" and a retry with the same key completes without a second charge', async () => {
       const quoteId = await declaredQuote();
       const key = randomUUID();
       const charges = gateway.chargeCount;
       issuer.failNext = 1;
 
-      await pay(quoteId, key).expect(500);
+      // The money was captured, so this is not reported as a failure.
+      const res = await pay(quoteId, key).expect(202);
+      expect(res.body.status).toBe('PAYMENT_PROCESSING');
 
-      // Rolled back: no policy, quote still MEDICAL_DECLARED (not PREMIUM_PAID), key released.
+      // Settlement rolled back: no policy, not PREMIUM_PAID; the attempt is
+      // still PENDING_PAYMENT and the key is released for a retry.
       expect(await state(quoteId)).toEqual({
-        quote: 'MEDICAL_DECLARED',
+        quote: 'PENDING_PAYMENT',
         policies: 0,
       });
       const rec = await prisma.idempotencyKey.findUniqueOrThrow({

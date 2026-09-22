@@ -5,7 +5,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { CheckoutNotAllowedError } from '../insurance/checkout/checkout.service.js';
+import {
+  CheckoutNotAllowedError,
+  PaymentInProgressError,
+} from '../insurance/checkout/checkout.service.js';
+import { PaymentSettlementConflictError } from '../insurance/checkout/payment-settlement.service.js';
 import {
   IdempotencyInProgressError,
   IdempotencyKeyReusedError,
@@ -23,6 +27,8 @@ import {
   QuoteExpiredError,
   IneligibleApplicantError,
   CheckoutNotAllowedError,
+  PaymentInProgressError,
+  PaymentSettlementConflictError,
   PaymentDeclinedError,
   IdempotencyInProgressError,
   IdempotencyKeyReusedError,
@@ -34,6 +40,8 @@ export class DomainExceptionFilter implements ExceptionFilter {
       | QuoteExpiredError
       | IneligibleApplicantError
       | CheckoutNotAllowedError
+      | PaymentInProgressError
+      | PaymentSettlementConflictError
       | PaymentDeclinedError
       | IdempotencyInProgressError
       | IdempotencyKeyReusedError,
@@ -55,6 +63,25 @@ export class DomainExceptionFilter implements ExceptionFilter {
         error:
           err.reason === 'ALREADY_PAID' ? 'AlreadyPaid' : 'DeclarationRequired',
         message: err.message,
+        quoteId: err.quoteId,
+      });
+      return;
+    }
+    if (err instanceof PaymentInProgressError) {
+      res.setHeader('Retry-After', '2');
+      res.status(HttpStatus.CONFLICT).json({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'PaymentInProgress',
+        message: err.message,
+        quoteId: err.quoteId,
+      });
+      return;
+    }
+    if (err instanceof PaymentSettlementConflictError) {
+      res.status(HttpStatus.CONFLICT).json({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'PaymentConflict',
+        message: 'This payment could not be applied to the quote.',
         quoteId: err.quoteId,
       });
       return;

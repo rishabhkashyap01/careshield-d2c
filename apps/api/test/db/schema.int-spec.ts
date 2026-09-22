@@ -15,8 +15,13 @@ import {
   QuoteExpiredError,
 } from '../../src/insurance/domain/quote-state-machine.js';
 
-const { QUOTE_GENERATED, MEDICAL_DECLARED, PREMIUM_PAID, POLICY_ISSUED } =
-  QuoteStatus;
+const {
+  QUOTE_GENERATED,
+  MEDICAL_DECLARED,
+  PENDING_PAYMENT,
+  PREMIUM_PAID,
+  POLICY_ISSUED,
+} = QuoteStatus;
 const D = (v: string | number) => new Prisma.Decimal(v);
 
 let prisma: PrismaService;
@@ -57,12 +62,27 @@ function policyInput(quoteId: string, overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function toPaid(id: string) {
+const paymentAttempt = () => ({
+  paymentKey: `key-${Math.random().toString(36).slice(2, 12)}`,
+  paymentStartedAt: new Date(),
+});
+
+async function toPending(id: string) {
   await repo.transition(id, QUOTE_GENERATED, MEDICAL_DECLARED, {
     medicalDeclaration: declaration,
     medicalDeclaredAt: new Date(),
   });
-  return repo.transition(id, MEDICAL_DECLARED, PREMIUM_PAID);
+  return repo.transition(
+    id,
+    MEDICAL_DECLARED,
+    PENDING_PAYMENT,
+    paymentAttempt(),
+  );
+}
+
+async function toPaid(id: string) {
+  await toPending(id);
+  return repo.transition(id, PENDING_PAYMENT, PREMIUM_PAID);
 }
 
 beforeAll(async () => {
@@ -225,8 +245,18 @@ describe('Task 1.1 — quote state machine', () => {
       medicalDeclaredAt: new Date(),
     });
     const results = await Promise.allSettled([
-      repo.transition(q.id, MEDICAL_DECLARED, PREMIUM_PAID),
-      repo.transition(q.id, MEDICAL_DECLARED, PREMIUM_PAID),
+      repo.transition(
+        q.id,
+        MEDICAL_DECLARED,
+        PENDING_PAYMENT,
+        paymentAttempt(),
+      ),
+      repo.transition(
+        q.id,
+        MEDICAL_DECLARED,
+        PENDING_PAYMENT,
+        paymentAttempt(),
+      ),
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
@@ -370,8 +400,9 @@ describe('State-machine audit trail (quote_status_transitions)', () => {
     expect(rows.map((r) => [r.seq, r.fromStatus, r.toStatus])).toEqual([
       [1, null, QUOTE_GENERATED],
       [2, QUOTE_GENERATED, MEDICAL_DECLARED],
-      [3, MEDICAL_DECLARED, PREMIUM_PAID],
-      [4, PREMIUM_PAID, POLICY_ISSUED],
+      [3, MEDICAL_DECLARED, PENDING_PAYMENT],
+      [4, PENDING_PAYMENT, PREMIUM_PAID],
+      [5, PREMIUM_PAID, POLICY_ISSUED],
     ]);
     const times = rows.map((r) => r.occurredAt.getTime());
     expect([...times].sort((a, b) => a - b)).toEqual(times);
@@ -443,6 +474,7 @@ describe('State-machine audit trail (quote_status_transitions)', () => {
     expect((await trail(q.id)).map((r) => r.toStatus)).toEqual([
       QUOTE_GENERATED,
       MEDICAL_DECLARED,
+      PENDING_PAYMENT,
       PREMIUM_PAID,
     ]);
   });
@@ -478,10 +510,138 @@ describe('State-machine audit trail (quote_status_transitions)', () => {
     });
     // Two racing payments: exactly one wins, and the trail stays 1, 2, 3.
     const results = await Promise.allSettled([
-      repo.transition(q.id, MEDICAL_DECLARED, PREMIUM_PAID),
-      repo.transition(q.id, MEDICAL_DECLARED, PREMIUM_PAID),
+      repo.transition(
+        q.id,
+        MEDICAL_DECLARED,
+        PENDING_PAYMENT,
+        paymentAttempt(),
+      ),
+      repo.transition(
+        q.id,
+        MEDICAL_DECLARED,
+        PENDING_PAYMENT,
+        paymentAttempt(),
+      ),
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect((await trail(q.id)).map((r) => r.seq)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('Payment in flight (PENDING_PAYMENT)', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /** A declared quote whose 15-minute lock ends `ms` from now. */
+  async function declaredQuoteExpiringIn(ms: number) {
+    const q = await repo.create(
+      quoteInput({ expiresAt: new Date(Date.now() + ms) }),
+    );
+    await repo.transition(q.id, QUOTE_GENERATED, MEDICAL_DECLARED, {
+      medicalDeclaration: declaration,
+      medicalDeclaredAt: new Date(),
+    });
+    return q;
+  }
+
+  it('a payment started before expiry can still settle after it (the clock is frozen)', async () => {
+    const q = await declaredQuoteExpiringIn(1_000);
+    await repo.transition(
+      q.id,
+      MEDICAL_DECLARED,
+      PENDING_PAYMENT,
+      paymentAttempt(),
+    );
+    await sleep(1_300); // the gateway was slow; the lock has now passed
+
+    await repo.transition(q.id, PENDING_PAYMENT, PREMIUM_PAID);
+    const issued = await prisma.$transaction(async (tx) => {
+      await tx.policy.create({ data: policyInput(q.id) });
+      return repo.transition(q.id, PREMIUM_PAID, POLICY_ISSUED, {}, tx);
+    });
+    expect(issued.status).toBe(POLICY_ISSUED);
+  });
+
+  it('a payment cannot be STARTED after expiry — in the app or via raw SQL', async () => {
+    const q = await declaredQuoteExpiringIn(300);
+    await sleep(500);
+    await expect(
+      repo.transition(
+        q.id,
+        MEDICAL_DECLARED,
+        PENDING_PAYMENT,
+        paymentAttempt(),
+      ),
+    ).rejects.toThrow(QuoteExpiredError);
+    await expect(
+      prisma.$executeRaw`UPDATE quotes SET status = 'PENDING_PAYMENT', payment_key = 'k-123456789', payment_started_at = now() WHERE id = ${q.id}::uuid`,
+    ).rejects.toThrow(/expired/);
+  });
+
+  it('a failed payment returns the quote to MEDICAL_DECLARED, even after expiry, and must clear the attempt', async () => {
+    const q = await declaredQuoteExpiringIn(1_000);
+    await repo.transition(
+      q.id,
+      MEDICAL_DECLARED,
+      PENDING_PAYMENT,
+      paymentAttempt(),
+    );
+    await sleep(1_300);
+    await expect(
+      prisma.$executeRaw`UPDATE quotes SET status = 'MEDICAL_DECLARED' WHERE id = ${q.id}::uuid`,
+    ).rejects.toThrow(/must clear the payment attempt/);
+
+    const back = await repo.transition(
+      q.id,
+      PENDING_PAYMENT,
+      MEDICAL_DECLARED,
+      {
+        paymentKey: null,
+        paymentStartedAt: null,
+      },
+    );
+    expect(back.status).toBe(MEDICAL_DECLARED);
+    // …and, now expired, it cannot start another payment.
+    await expect(
+      repo.transition(
+        q.id,
+        MEDICAL_DECLARED,
+        PENDING_PAYMENT,
+        paymentAttempt(),
+      ),
+    ).rejects.toThrow(QuoteExpiredError);
+  });
+
+  it('a pending payment must name its attempt, which cannot be swapped or dropped', async () => {
+    const q = await declaredQuoteExpiringIn(60_000);
+    await expect(
+      prisma.$executeRaw`UPDATE quotes SET status = 'PENDING_PAYMENT' WHERE id = ${q.id}::uuid`,
+    ).rejects.toThrow(/pending_payment_attempt/);
+
+    await repo.transition(
+      q.id,
+      MEDICAL_DECLARED,
+      PENDING_PAYMENT,
+      paymentAttempt(),
+    );
+    await expect(
+      prisma.$executeRaw`UPDATE quotes SET payment_key = 'someone-elses-key' WHERE id = ${q.id}::uuid`,
+    ).rejects.toThrow(/can only change together with the status/);
+    await expect(
+      prisma.$executeRaw`UPDATE quotes SET status = 'PREMIUM_PAID', payment_key = 'someone-elses-key' WHERE id = ${q.id}::uuid`,
+    ).rejects.toThrow(/can only change when a payment starts or fails/);
+  });
+
+  it('new quotes cannot carry a payment attempt, and nothing skips PENDING_PAYMENT', async () => {
+    await expect(
+      repo.create(
+        quoteInput({ paymentKey: 'k-123456789', paymentStartedAt: new Date() }),
+      ),
+    ).rejects.toThrow(/cannot carry a payment attempt/);
+
+    const q = await declaredQuoteExpiringIn(60_000);
+    await expect(
+      prisma.$executeRaw`UPDATE quotes SET status = 'PREMIUM_PAID' WHERE id = ${q.id}::uuid`,
+    ).rejects.toThrow(
+      /Illegal quote transition MEDICAL_DECLARED -> PREMIUM_PAID/,
+    );
   });
 });

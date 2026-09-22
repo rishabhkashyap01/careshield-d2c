@@ -17,6 +17,8 @@ export type Db = PrismaService | Prisma.TransactionClient;
 export type AuditAction =
   | 'quote.created'
   | 'quote.medical_declared'
+  | 'checkout.payment_started'
+  | 'checkout.payment_failed'
   | 'checkout.premium_paid'
   | 'checkout.policy_issued';
 
@@ -28,6 +30,10 @@ export interface AuditContext {
   idempotencyKey?: string;
   paymentReference?: string;
   policyNumber?: string;
+  /** Which path settled the payment: the checkout request, a webhook or reconciliation. */
+  via?: 'request' | 'webhook' | 'reconciler';
+  /** Why a payment failed (card_declined, abandoned, …). */
+  reason?: string;
 }
 
 /**
@@ -79,7 +85,7 @@ export class QuotesRepository {
     assertTransition(from, to);
 
     const where: Prisma.QuoteWhereInput = { id, status: from };
-    if (requiresValidLock(to)) where.expiresAt = { gte: now };
+    if (requiresValidLock(from, to)) where.expiresAt = { gte: now };
 
     const { count } = await db.quote.updateMany({
       where,
@@ -93,7 +99,7 @@ export class QuotesRepository {
     if (quote.status !== from) {
       throw new InvalidQuoteTransitionError(quote.status, to);
     }
-    if (requiresValidLock(to) && isQuoteExpired(quote, now)) {
+    if (requiresValidLock(from, to) && isQuoteExpired(quote, now)) {
       throw new QuoteExpiredError(quote.id, quote.expiresAt);
     }
     throw new InvalidQuoteTransitionError(from, to);

@@ -24,7 +24,8 @@ src/
     ├── insurance.controller.ts POST /quote, POST /quote/:id/medical-declaration
     ├── quotes.service.ts       quote logic
     ├── quotes.repository.ts    the only code that changes a quote's status (+ audit context)
-    └── checkout/               POST /checkout: transaction, idempotency, mock gateway
+    └── checkout/               POST /checkout (begin → gateway → settle), idempotency, mock gateway,
+                                payment webhook, status poll, reconciler
 api/index.js                    Vercel serverless entry (wraps the compiled app in dist/)
 prisma/
 ├── schema.prisma               tables: quotes, policies, quote_status_transitions, idempotency_keys
@@ -47,6 +48,8 @@ erDiagram
         numeric total_premium
         QuoteStatus status
         jsonb medical_declaration
+        varchar payment_key "attempt in flight"
+        timestamptz payment_started_at
         timestamptz created_at
         timestamptz expires_at "created_at + 15 min"
     }
@@ -77,12 +80,20 @@ erDiagram
     }
 ```
 
-**State machine:** `QUOTE_GENERATED → MEDICAL_DECLARED → PREMIUM_PAID → POLICY_ISSUED`. It only moves forward, one step at a time.
+**State machine:**
+
+```
+QUOTE_GENERATED → MEDICAL_DECLARED → PENDING_PAYMENT → PREMIUM_PAID → POLICY_ISSUED
+                         ↑                  │
+                         └── payment failed ┘
+```
+
+`PENDING_PAYMENT` means a payment has started and is recorded before the gateway is called. It freezes the 15-minute clock: the lock applies to declaring and to **starting** a payment, not to settling one that started in time. The only backward step is a definitively failed payment, which returns the quote so the customer can try another card.
 
 It's enforced twice:
 
 - **In code:** `quotes.repository.ts` does a compare-and-set `UPDATE … WHERE status = <from>`, so two simultaneous requests can't both advance a quote.
-- **In the database:** the trigger `enforce_quote_lifecycle` rejects skipped or reversed steps, declaring or paying after `expires_at`, and any change to a quote's price or expiry. The trigger `enforce_policy_from_paid_quote` only allows a policy for a paid quote, at exactly the quoted amount.
+- **In the database:** the trigger `enforce_quote_lifecycle` rejects any other step, declaring or starting a payment after `expires_at`, a pending payment without its `payment_key` (or swapping it mid-flight), and any change to a quote's price or expiry. The trigger `enforce_policy_from_paid_quote` only allows a policy for a paid quote, at exactly the quoted amount.
 
 ### Audit trail
 
@@ -100,7 +111,10 @@ Every status change also leaves one row in `quote_status_transitions`: `(quote_i
 | -------- | ------- | ------ |
 | `POST /insurance/quote` `{ age, hasPreExistingConditions }` | 201 quote | 400 validation |
 | `POST /insurance/quote/:id/medical-declaration` (6 booleans + `confirmsAccuracy: true`) | 200 quote | 400 · 404 · 409 already declared · 410 expired · 422 not eligible |
-| `POST /insurance/checkout` header `Idempotency-Key`, body `{ quoteId, paymentToken }` | 201 policy | 400 · 402 declined · 404 · 409 in progress / already paid / not declared · 410 expired · 422 key reused |
+| `POST /insurance/checkout` header `Idempotency-Key`, body `{ quoteId, paymentToken }` | 201 policy · **202** still processing | 400 · 402 declined · 404 · 409 in progress / payment in progress / already paid / not declared · 410 expired · 422 key reused |
+| `GET /insurance/quote/:id/payment` | 200 `{ state: ISSUED \| PROCESSING \| NOT_PAID }` | 404 |
+| `POST /payments/webhook` (signed by the payment provider) | 200 `{ received, result }` | 400 malformed · 401 bad signature · 503 not configured |
+| `GET /payments/reconcile` header `Authorization: Bearer $CRON_SECRET` | 200 `{ checked, results }` | 401 · 503 not configured |
 | `GET /health/live` | 200 | never touches the database |
 | `GET /health/ready` (alias `/health`) | 200 | 503 `down` or `timeout` (2 s) |
 
@@ -118,24 +132,36 @@ Every status change also leaves one row in `quote_status_transitions`: `(quote_i
 | Age over 45 (46 and up) | +50% of base |
 | Pre-existing conditions | +₹5,000 flat |
 
-## Checkout: atomic and idempotent
+## Checkout: short transactions, idempotent, settled once
+
+The payment gateway is **never called inside a database transaction**. A slow provider would otherwise hold a pooled connection and the quote's row lock for as long as it takes.
 
 1. **Claim the `Idempotency-Key`** by inserting it with status `IN_PROGRESS`. The primary key means exactly one of several simultaneous requests wins.
    - A repeat of a **finished** request replays the saved response, with no new charge.
    - A repeat of a **running** request gets 409.
    - The **same key with a different body** gets 422.
-2. **One transaction:**
-   ```
-   SELECT … FROM quotes … FOR UPDATE   → second tab waits, then gets "already paid"
-   check declared + not expired        → before any charge
-   charge the gateway (same key)       → the gateway is idempotent too
-   MEDICAL_DECLARED → PREMIUM_PAID → insert policy → POLICY_ISSUED
-   mark the key COMPLETED, save the response
-   ```
-   Any error rolls back all of it. The key is then marked `FAILED`, so a retry with the same key runs again, and the gateway returns the original charge instead of charging twice.
-3. **A key orphaned** by a database drop (stuck `IN_PROGRESS` for more than 60 s) can be taken over by a retry.
+2. **Begin** (short transaction): lock the quote, check it's declared and **not expired**, then `MEDICAL_DECLARED → PENDING_PAYMENT` with `payment_key` = the Idempotency-Key. **COMMIT.** A second tab with another key now gets 409 `PaymentInProgress`.
+3. **Charge** the gateway with **no transaction open**, with the same key (the gateway is idempotent too) and a timeout (`GATEWAY_TIMEOUT_MS`, 10 s).
+4. **Settle** (short transaction, `PaymentSettlementService`): `PENDING_PAYMENT → PREMIUM_PAID → insert policy → POLICY_ISSUED`, mark the key `COMPLETED`, save the response. This is allowed after `expires_at`, because the clock was frozen in step 2.
 
-Mock payment tokens: `tok_visa_4242`, `tok_mastercard_4444` and `tok_upi_success` are approved; `tok_card_declined` is always declined. To use a real provider, replace `MockPaymentGateway` behind the `PAYMENT_GATEWAY` token.
+**Outcomes of step 3:**
+
+| Gateway result | What happens | Customer sees |
+| --- | --- | --- |
+| Captured | Step 4 | 201 policy |
+| Declined | `PENDING_PAYMENT → MEDICAL_DECLARED` (reason in the audit trail); key `FAILED` | 402; can pay with another card |
+| Timeout / unknown | Quote stays `PENDING_PAYMENT`; key released | **202** "processing"; the page polls |
+| Captured, but step 4 crashed | Settlement rolled back; quote stays `PENDING_PAYMENT` | 202; settled later without a second charge |
+
+**Late results** are applied by whichever arrives first, all through the same idempotent `settle` / `fail`:
+
+- **Webhook** `POST /payments/webhook`. The provider signs the raw body: `Webhook-Signature: t=<unix>,v1=<HMAC-SHA256(secret, "t.body")>`. It's verified in constant time, and events more than 5 minutes old are refused. A capture that doesn't match the pending attempt, or arrives for a quote that's already paid, is acknowledged but not applied, and is logged for a refund.
+- **Status poll** `GET /insurance/quote/:id/payment`. The page asks every 2 s. A payment that's been silent for 5 s is looked up at the gateway (`retrieve(key)`) and settled on the spot, so the journey completes even with no webhook.
+- **Reconciler** `GET /payments/reconcile`. A scheduled job settles anything stuck in `PENDING_PAYMENT` for more than 30 s. A payment the gateway never received (the request died after step 2) is given up after 2 minutes, which returns the quote.
+
+A retry with the **same key** after a 202 resumes the same attempt: the gateway returns the original charge, so the customer is never charged twice. **A key orphaned** by a database drop (stuck `IN_PROGRESS` for more than 60 s) can be taken over by a retry.
+
+Mock payment tokens: `tok_visa_4242`, `tok_mastercard_4444` and `tok_upi_success` are approved; `tok_card_declined` is always declined. The mock remembers charges by key, answers `retrieve()`, and posts signed webhooks to `MOCK_GATEWAY_WEBHOOK_URL`. `MOCK_PAYMENT_LATENCY_MS=15000` makes the slow path easy to try locally. To use a real provider, replace `MockPaymentGateway` behind the `PAYMENT_GATEWAY` token.
 
 ## Notes
 

@@ -1,9 +1,10 @@
 'use server';
 
-import { apiPost, fieldErrorsFrom, isErrorBody } from '@/lib/api';
+import { apiGet, apiPost, fieldErrorsFrom, isErrorBody } from '@/lib/api';
 import type {
   DeclarationState,
   IssuedPolicy,
+  PaymentCheck,
   PaymentState,
   Quote,
   QuoteFormState,
@@ -163,17 +164,21 @@ export async function payPremium(
     { 'Idempotency-Key': idempotencyKey },
   );
 
+  // 202: the gateway hasn't answered yet — the page polls checkPayment.
+  if (res.status === 202) return { status: 'processing' };
   if (res.ok && res.data && !isErrorBody(res.data)) {
     return { status: 'success', policy: res.data };
   }
   const body = isErrorBody(res.data) ? res.data : null;
+  // Another tab/device already started paying for this quote: follow that payment.
+  if (res.status === 409 && body?.error === 'PaymentInProgress') return { status: 'processing' };
   switch (res.status) {
     case 410:
       return { status: 'error', expired: true, message: 'Your quote expired before payment. You have not been charged.' };
     case 400:
       return { status: 'error', message: 'That payment method isn’t available. You have not been charged.' };
     case 402:
-      return { status: 'error', message: 'Your payment was declined. You have not been charged.' };
+      return { status: 'error', declined: true, message: 'Your payment was declined. You have not been charged.' };
     case 404:
       return { status: 'error', message: 'We couldn’t find this quote. Please start again. You have not been charged.' };
     case 422:
@@ -189,5 +194,38 @@ export async function payPremium(
         message:
           'We couldn’t confirm your payment. Please try again — you will not be charged twice.',
       };
+  }
+}
+
+const FAILURE_MESSAGES: Record<string, string> = {
+  card_declined: 'Your payment was declined.',
+  insufficient_funds: 'Your payment was declined for insufficient funds.',
+  abandoned: 'Your payment didn’t reach our payment provider.',
+};
+
+/**
+ * Polled while a payment is processing: GET /api/v1/insurance/quote/:id/payment.
+ * The API reconciles with the gateway itself if the result is overdue.
+ */
+export async function checkPayment(quoteId: string): Promise<PaymentCheck> {
+  if (!UUID.test(quoteId)) return { status: 'error', message: 'Invalid quote.' };
+  const res = await apiGet<
+    | { state: 'ISSUED'; policy: IssuedPolicy }
+    | { state: 'PROCESSING' }
+    | { state: 'NOT_PAID'; lastFailure?: string }
+  >(`/insurance/quote/${quoteId}/payment`);
+  if (!res.ok || !res.data || isErrorBody(res.data)) return { status: 'processing' }; // try again
+  switch (res.data.state) {
+    case 'ISSUED':
+      return { status: 'success', policy: res.data.policy };
+    case 'PROCESSING':
+      return { status: 'processing' };
+    default: {
+      const why = res.data.lastFailure ? FAILURE_MESSAGES[res.data.lastFailure] : undefined;
+      return {
+        status: 'error',
+        message: `${why ?? 'Your payment didn’t go through.'} You have not been charged.`,
+      };
+    }
   }
 }

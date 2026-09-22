@@ -11,14 +11,27 @@ import {
   QUOTE_LOCK_MS,
 } from './quote-lock.js';
 
-const { QUOTE_GENERATED, MEDICAL_DECLARED, PREMIUM_PAID, POLICY_ISSUED } =
-  QuoteStatus;
-const ALL = [QUOTE_GENERATED, MEDICAL_DECLARED, PREMIUM_PAID, POLICY_ISSUED];
+const {
+  QUOTE_GENERATED,
+  MEDICAL_DECLARED,
+  PENDING_PAYMENT,
+  PREMIUM_PAID,
+  POLICY_ISSUED,
+} = QuoteStatus;
+const ALL = [
+  QUOTE_GENERATED,
+  MEDICAL_DECLARED,
+  PENDING_PAYMENT,
+  PREMIUM_PAID,
+  POLICY_ISSUED,
+];
 
 describe('quote state machine', () => {
   const legal: Array<[QuoteStatus, QuoteStatus]> = [
     [QUOTE_GENERATED, MEDICAL_DECLARED],
-    [MEDICAL_DECLARED, PREMIUM_PAID],
+    [MEDICAL_DECLARED, PENDING_PAYMENT],
+    [PENDING_PAYMENT, PREMIUM_PAID],
+    [PENDING_PAYMENT, MEDICAL_DECLARED], // payment failed
     [PREMIUM_PAID, POLICY_ISSUED],
   ];
 
@@ -40,11 +53,15 @@ describe('quote state machine', () => {
     }
   });
 
-  it('only declaration and payment are guarded by the quote lock', () => {
-    expect(ALL.filter(requiresValidLock)).toEqual([
-      MEDICAL_DECLARED,
-      PREMIUM_PAID,
+  it('only declaring and STARTING a payment are guarded by the quote lock', () => {
+    const guarded = legal.filter(([from, to]) => requiresValidLock(from, to));
+    expect(guarded).toEqual([
+      [QUOTE_GENERATED, MEDICAL_DECLARED],
+      [MEDICAL_DECLARED, PENDING_PAYMENT],
     ]);
+    // A payment started in time may settle (or fail) after expiry.
+    expect(requiresValidLock(PENDING_PAYMENT, PREMIUM_PAID)).toBe(false);
+    expect(requiresValidLock(PENDING_PAYMENT, MEDICAL_DECLARED)).toBe(false);
   });
 });
 

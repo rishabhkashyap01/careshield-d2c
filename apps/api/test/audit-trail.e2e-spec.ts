@@ -36,6 +36,7 @@ describe('Quote status audit trail (e2e)', () => {
     await app.init();
     prisma = app.get(PrismaService);
     app.get(MockPaymentGateway).latencyMs = 0;
+    app.get(MockPaymentGateway).webhookUrl = undefined;
   });
 
   beforeEach(async () => {
@@ -75,8 +76,9 @@ describe('Quote status audit trail (e2e)', () => {
     expect(rows.map((r) => [r.seq, r.fromStatus, r.toStatus])).toEqual([
       [1, null, 'QUOTE_GENERATED'],
       [2, 'QUOTE_GENERATED', 'MEDICAL_DECLARED'],
-      [3, 'MEDICAL_DECLARED', 'PREMIUM_PAID'],
-      [4, 'PREMIUM_PAID', 'POLICY_ISSUED'],
+      [3, 'MEDICAL_DECLARED', 'PENDING_PAYMENT'],
+      [4, 'PENDING_PAYMENT', 'PREMIUM_PAID'],
+      [5, 'PREMIUM_PAID', 'POLICY_ISSUED'],
     ]);
     const ctx = rows.map((r) => r.triggerContext as Context);
 
@@ -92,19 +94,26 @@ describe('Quote status audit trail (e2e)', () => {
       requestId: declared.headers['x-request-id'],
     });
     expect(ctx[2]).toMatchObject({
+      action: 'checkout.payment_started',
+      idempotencyKey: key,
+      requestId: paid.headers['x-request-id'],
+    });
+    expect(ctx[3]).toMatchObject({
       action: 'checkout.premium_paid',
+      via: 'request',
       idempotencyKey: key,
       paymentReference: paid.body.paymentReference,
       requestId: paid.headers['x-request-id'],
     });
-    expect(ctx[3]).toMatchObject({
+    expect(ctx[4]).toMatchObject({
       action: 'checkout.policy_issued',
       idempotencyKey: key,
       policyNumber: paid.body.policyNumber,
     });
-    // Both checkout changes happened in one database transaction.
-    expect(ctx[2].txid).toBe(ctx[3].txid);
-    expect(ctx[1].txid).not.toBe(ctx[2].txid);
+    // Starting the payment committed on its own (before the gateway was
+    // called); paying and issuing were then one transaction.
+    expect(ctx[2].txid).not.toBe(ctx[3].txid);
+    expect(ctx[3].txid).toBe(ctx[4].txid);
   });
 
   it('uses a well-formed incoming X-Request-Id, and replaces a malformed one', async () => {
@@ -125,7 +134,7 @@ describe('Quote status audit trail (e2e)', () => {
     expect(bad.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it('adds nothing for requests that do not change state', async () => {
+  it('records a declined payment as a round trip, and nothing for requests that change nothing', async () => {
     const quote = await http()
       .post('/api/v1/insurance/quote')
       .send({ age: 30, hasPreExistingConditions: false })
@@ -142,13 +151,26 @@ describe('Quote status audit trail (e2e)', () => {
       .send(declaration)
       .expect(200);
 
-    // Declined card → 402 and the checkout transaction rolls back.
+    expect(await trail(id)).toHaveLength(2); // the 422 left nothing
+
+    // Declined card → 402: the attempt started, then failed back.
     await http()
       .post('/api/v1/insurance/checkout')
       .set('Idempotency-Key', randomUUID())
       .send({ quoteId: id, paymentToken: 'tok_card_declined' })
       .expect(402);
-    expect(await trail(id)).toHaveLength(2);
+    const afterDecline = await trail(id);
+    expect(afterDecline.map((r) => r.toStatus)).toEqual([
+      'QUOTE_GENERATED',
+      'MEDICAL_DECLARED',
+      'PENDING_PAYMENT',
+      'MEDICAL_DECLARED',
+    ]);
+    expect(afterDecline[3].triggerContext).toMatchObject({
+      action: 'checkout.payment_failed',
+      reason: 'card_declined',
+      via: 'request',
+    });
 
     // Paying, then replaying the same request, records the payment once.
     const key = randomUUID();
@@ -162,6 +184,9 @@ describe('Quote status audit trail (e2e)', () => {
     expect((await trail(id)).map((r) => r.toStatus)).toEqual([
       'QUOTE_GENERATED',
       'MEDICAL_DECLARED',
+      'PENDING_PAYMENT',
+      'MEDICAL_DECLARED',
+      'PENDING_PAYMENT',
       'PREMIUM_PAID',
       'POLICY_ISSUED',
     ]);

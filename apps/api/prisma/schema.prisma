@@ -1,7 +1,7 @@
 // CareShield D2C — Phase 1: Database schema & state management
 //
 // Lifecycle of a purchase:
-//   quotes (QUOTE_GENERATED → MEDICAL_DECLARED → PREMIUM_PAID → POLICY_ISSUED)
+//   quotes (QUOTE_GENERATED → MEDICAL_DECLARED → PENDING_PAYMENT → PREMIUM_PAID → POLICY_ISSUED)
 //     └── 1:1 ──> policies (created when the quote is bound & issued)
 //
 // Money is always NUMERIC(10,2) (Prisma `Decimal`), never float.
@@ -23,6 +23,9 @@ datasource db {
 enum QuoteStatus {
   QUOTE_GENERATED
   MEDICAL_DECLARED
+  /// A payment has been started (and committed) before the gateway is called;
+  /// the 15-minute clock is frozen until it settles or fails.
+  PENDING_PAYMENT
   PREMIUM_PAID
   POLICY_ISSUED
 }
@@ -56,10 +59,17 @@ model Quote {
   /// Quote lock: the premium is only honoured until this instant (created_at + 15 min).
   expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
 
+  /// The payment attempt in flight (its Idempotency-Key, which the gateway and
+  /// its webhooks also carry). Set on entering PENDING_PAYMENT, cleared if the
+  /// payment fails, kept once paid.
+  paymentKey       String?   @map("payment_key") @db.VarChar(255)
+  paymentStartedAt DateTime? @map("payment_started_at") @db.Timestamptz(3)
+
   policy            Policy?
   statusTransitions QuoteStatusTransition[]
 
   @@index([status, expiresAt])
+  @@index([status, paymentStartedAt])
   @@map("quotes")
 }
 

@@ -34,7 +34,7 @@ npm run web:dev                           # terminal 2 → http://localhost:3000
 
 | Task | What | Where |
 | ---- | ---- | ----- |
-| 1.1 | `quotes` ↔ `policies`, state machine `QUOTE_GENERATED → MEDICAL_DECLARED → PREMIUM_PAID → POLICY_ISSUED` | `apps/api/prisma/schema.prisma`, `src/insurance/domain/quote-state-machine.ts` |
+| 1.1 | `quotes` ↔ `policies`, state machine `QUOTE_GENERATED → MEDICAL_DECLARED → (PENDING_PAYMENT) → PREMIUM_PAID → POLICY_ISSUED` | `apps/api/prisma/schema.prisma`, `src/insurance/domain/quote-state-machine.ts` |
 | 1.2 | `NUMERIC(10,2)` money, `created_at` / `expires_at` | `apps/api/prisma/migrations/` |
 | 2.1 | `POST /api/v1/insurance/quote` with strict validation | `src/insurance/insurance.controller.ts`, `dto/create-quote.dto.ts` |
 | 2.2 | ₹10,000 base, +50% if age > 45, +₹5,000 for pre-existing conditions | `src/insurance/domain/premium-calculator.ts` |
@@ -42,8 +42,9 @@ npm run web:dev                           # terminal 2 → http://localhost:3000
 | 3.1 | Accessible Tailwind UI that posts through Server Actions | `apps/web/src/app/actions.ts`, `components/flow/` |
 | 3.2 | Countdown from the server-computed `remainingMs` (device clock never trusted); payment disabled at 0; recalculate | `apps/web/src/lib/lock-clock.ts`, `hooks/useCountdown.ts`, `components/flow/ExpiredPanel.tsx` |
 | 3.3 | `useActionState` / `useTransition` loading state that prevents double-clicks | `apps/web/src/components/flow/PaymentStep.tsx` |
-| 4.1 | Atomic checkout transaction with rollback | `apps/api/src/insurance/checkout/checkout.service.ts` |
+| 4.1 | Atomic checkout with rollback, in short transactions: the payment gateway is never called inside one | `apps/api/src/insurance/checkout/checkout.service.ts`, `payment-settlement.service.ts` |
 | 4.2 | `Idempotency-Key`: no double charges | `apps/api/src/insurance/checkout/idempotency.service.ts` |
+| + | `PENDING_PAYMENT` freezes the 15-minute lock while a payment is processing; late results settle through a signed webhook, a status poll or a reconciler | `apps/api/prisma/migrations/20260923000100_checkout_payment_lifecycle/`, `src/insurance/checkout/` |
 | + | Immutable, sequential audit trail of every status change (`quote_id, from, to, time, context`) | `apps/api/prisma/migrations/20260922100000_quote_status_audit/`, `src/insurance/quotes.repository.ts` |
 
 Details are in [apps/api/README.md](apps/api/README.md) and [apps/web/README.md](apps/web/README.md).
@@ -53,6 +54,7 @@ Details are in [apps/api/README.md](apps/api/README.md) and [apps/web/README.md]
 - **Rules are enforced in the database as well as the API.** CHECK constraints and triggers guard the state machine, the 15-minute lock, fixed prices, and "a policy only for a paid quote, at the quoted amount". The app gives friendly errors; the database is the final guarantee.
 - **Every status change is audited by the database.** A trigger writes an append-only row to `quote_status_transitions` for each change, with why it happened (action, request id, idempotency key, payment reference) and who (database user, transaction). A rolled-back change leaves no row; manual SQL is recorded too.
 - **The countdown never trusts the device clock.** The API sends the lock time left, measured on its own clock; the browser only measures elapsed time from when that answer arrived.
+- **No slow network call inside a database transaction.** Checkout records `PENDING_PAYMENT` and commits, calls the payment gateway with no transaction open, then settles in a second short transaction. A payment started before the 15-minute deadline may finish after it, because the clock is frozen for it. If the gateway is slow, the customer sees "processing" and the result is applied by the provider's webhook, the status poll or a scheduled reconciler, exactly once.
 - **A quote is a fixed offer.** Its price and expiry never change. New details mean a new quote, and an abandoned quote simply expires.
 - **The browser never calls the API directly.** Server Actions do, so the API address stays server-side.
 - **Money is exact.** It's `NUMERIC(10,2)` in the database, `Decimal` in the API, and 2-decimal strings in JSON.

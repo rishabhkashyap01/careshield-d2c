@@ -33,7 +33,7 @@ function useCountUp(target: number, ms = 700) {
 
 /** The dark strip under the dialog header: live premium + price-lock countdown. */
 export function PriceBar() {
-  const { quote, remainingMs, expired } = useFlow();
+  const { quote, remainingMs, expired, paymentPending } = useFlow();
   const shown = useCountUp(quote ? Number(quote.premium.total) : 0);
   if (!quote) return null;
 
@@ -56,10 +56,17 @@ export function PriceBar() {
             pre-existing conditions
           </p>
         </div>
-        <CountdownRing
-          remainingMs={expired ? 0 : remainingMs}
-          totalSeconds={quote.lockDurationSeconds}
-        />
+        {paymentPending ? (
+          // The server froze the lock for this payment; a ticking clock would mislead.
+          <p className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">
+            Price secured · confirming payment
+          </p>
+        ) : (
+          <CountdownRing
+            remainingMs={expired ? 0 : remainingMs}
+            totalSeconds={quote.lockDurationSeconds}
+          />
+        )}
       </div>
     </div>
   );

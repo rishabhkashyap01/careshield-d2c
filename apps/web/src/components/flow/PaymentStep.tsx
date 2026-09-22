@@ -1,7 +1,7 @@
 'use client';
 
-import { useActionState, useRef } from 'react';
-import { payPremium } from '@/app/actions';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { checkPayment, payPremium } from '@/app/actions';
 import { useSubmit } from '@/hooks/useSubmit';
 import { formatMoney } from '@/lib/format';
 import type { PaymentState } from '@/lib/types';
@@ -49,7 +49,7 @@ const METHODS = [
  *     most one successful payment per quote.
  */
 export function PaymentStep() {
-  const { quote, expired, onPaid, markExpired, editDetails } = useFlow();
+  const { quote, expired, onPaid, markExpired, editDetails, setPaymentPending } = useFlow();
   const q = quote!;
   const keys = useRef(new Map<string, string>());
   const keyFor = (token: string) => {
@@ -58,14 +58,22 @@ export function PaymentStep() {
     return key;
   };
   const inFlight = useRef(false);
+  const lastToken = useRef('');
+  /** Set when a processing payment is later reported as failed. */
+  const [failure, setFailure] = useState<string | null>(null);
 
   const [state, action, pending] = useActionState<PaymentState, FormData>(
     async (prev, fd) => {
       try {
+        setFailure(null);
         const token = String(fd.get('paymentToken') ?? '');
+        lastToken.current = token;
         const result = await payPremium(q.quoteId, keyFor(token), prev, fd);
         if (result.status === 'success') onPaid(result.policy);
+        if (result.status === 'processing') setPaymentPending(true);
         if (result.status === 'error' && result.expired) markExpired();
+        // A definitive failure ends that attempt; trying again is a new one.
+        if (result.status === 'error' && result.declined) keys.current.delete(token);
         return result;
       } finally {
         inFlight.current = false;
@@ -74,7 +82,40 @@ export function PaymentStep() {
     { status: 'idle' },
   );
 
-  const blocked = pending || expired;
+  // The gateway hasn't answered yet: poll until the payment settles or fails.
+  // (The API itself reconciles with the gateway when a result is overdue.)
+  const processing = state.status === 'processing' && failure === null;
+  // onPaid is a new function on every render (the countdown re-renders 4×/s);
+  // read it through a ref so the poll isn't restarted each time.
+  const onPaidRef = useRef(onPaid);
+  useEffect(() => {
+    onPaidRef.current = onPaid;
+  });
+  useEffect(() => {
+    if (!processing) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      const result = await checkPayment(q.quoteId);
+      if (stopped) return;
+      if (result.status === 'success') return onPaidRef.current(result.policy);
+      if (result.status === 'error') {
+        keys.current.delete(lastToken.current);
+        setPaymentPending(false);
+        setFailure(result.message);
+        return;
+      }
+      timer = window.setTimeout(poll, 2000);
+    };
+    timer = window.setTimeout(poll, 1500);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [processing, q.quoteId, setPaymentPending]);
+
+  const busy = pending || processing;
+  const blocked = busy || expired;
   // Synchronous guard: runs before React re-renders, so it catches a second
   // click/Enter that arrives while `pending` is still false.
   const onSubmit = useSubmit(action, () => {
@@ -89,7 +130,7 @@ export function PaymentStep() {
     lines.push(['Pre-existing condition loading', q.premium.conditionLoading]);
 
   return (
-    <form onSubmit={onSubmit} aria-busy={pending} className="flex min-h-0 flex-1 flex-col">
+    <form onSubmit={onSubmit} aria-busy={busy} className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 space-y-6 overflow-y-auto px-6 pb-6 pt-2">
         <div>
           <h2 tabIndex={-1} className="text-2xl font-semibold tracking-tight text-ink outline-none">
@@ -156,28 +197,38 @@ export function PaymentStep() {
       </div>
 
       <div className="relative space-y-2 border-t border-slate-100 bg-white/90 px-6 py-4 backdrop-blur">
-        {state.status === 'error' && !state.expired && !expired && (
+        {processing && (
+          <Alert
+            tone="info"
+            title="Confirming your payment"
+            className="animate-fade-up [animation-duration:250ms]"
+          >
+            This is taking a little longer than usual. Please keep this window open — your price
+            is secured and you won’t be charged twice.
+          </Alert>
+        )}
+        {(failure ?? (state.status === 'error' && !state.expired && !expired && state.message)) && (
           <Alert
             tone="error"
             title="Payment not completed"
             className="max-h-[38dvh] animate-fade-up overflow-y-auto [animation-duration:250ms]"
           >
-            {state.message}
+            {failure ?? (state.status === 'error' ? state.message : null)}
           </Alert>
         )}
 
         <div className="flex items-center justify-between gap-2">
-          <Button type="button" variant="ghost" onClick={editDetails} disabled={pending}>
+          <Button type="button" variant="ghost" onClick={editDetails} disabled={busy}>
             <ArrowLeftIcon className="h-4 w-4" /> Change details
           </Button>
-          <CancelQuote disabled={pending} />
+          <CancelQuote disabled={busy} />
         </div>
         <Button
           type="submit"
           size="lg"
           disabled={blocked}
-          pending={pending}
-          pendingLabel="Processing payment…"
+          pending={busy}
+          pendingLabel={processing ? 'Confirming payment…' : 'Processing payment…'}
           className="w-full"
           data-testid="pay-button"
         >
@@ -187,7 +238,7 @@ export function PaymentStep() {
           Protected against double charges · you’ll only ever be charged once
         </p>
         <p className="sr-only" role="status" aria-live="polite">
-          {pending ? 'Processing your payment. Please don’t close this window.' : ''}
+          {busy ? 'Processing your payment. Please don’t close this window.' : ''}
         </p>
       </div>
     </form>

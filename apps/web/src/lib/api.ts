@@ -44,6 +44,22 @@ export async function apiPost<T>(
   return { ok: res.ok, status: res.status, data };
 }
 
+export async function apiGet<T>(path: string): Promise<ApiResult<T>> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    console.error(`[api] GET ${path} failed`, err);
+    return { ok: false, status: 0, data: null };
+  }
+  const data = (await res.json().catch(() => null)) as T | ApiErrorBody | null;
+  return { ok: res.ok, status: res.status, data };
+}
+
 export function isErrorBody(x: unknown): x is ApiErrorBody {
   return typeof x === 'object' && x !== null && ('error' in x || 'statusCode' in x);
 }

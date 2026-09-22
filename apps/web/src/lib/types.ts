@@ -2,6 +2,7 @@
 export type QuoteStatus =
   | 'QUOTE_GENERATED'
   | 'MEDICAL_DECLARED'
+  | 'PENDING_PAYMENT'
   | 'PREMIUM_PAID'
   | 'POLICY_ISSUED';
 
@@ -60,5 +61,14 @@ export type DeclarationState =
 
 export type PaymentState =
   | { status: 'idle' }
-  | { status: 'error'; message: string; expired?: boolean }
+  /** `declined`: this attempt definitively failed, so a retry is a NEW attempt. */
+  | { status: 'error'; message: string; expired?: boolean; declined?: boolean }
+  /** The outcome isn't known yet (slow gateway); poll checkPayment. */
+  | { status: 'processing' }
   | { status: 'success'; policy: IssuedPolicy };
+
+/** Result of polling a processing payment. */
+export type PaymentCheck =
+  | { status: 'success'; policy: IssuedPolicy }
+  | { status: 'processing' }
+  | { status: 'error'; message: string };

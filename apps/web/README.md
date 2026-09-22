@@ -37,7 +37,7 @@ Browser ── form submit ──► Server Action (src/app/actions.ts) ── f
 | ---- | --- |
 | 3.1 Accessible UI | Native `<dialog>` (focus trap, Esc to close); real labels and `fieldset`/`legend`; focus moves to each step's heading; `prefers-reduced-motion` respected |
 | 3.2 Countdown | The API sends `remainingMs`, measured on its own clock. `lib/lock-clock.ts` anchors it when the response arrives (minus half the round trip) and then only measures elapsed time locally, so a wrong device clock can't end the timer early or keep it running late; sleeping or turning the clock back never adds time. `hooks/useCountdown.ts` ticks it. At 0 the buttons are disabled and **Recalculate premium** re-quotes. A 410 from the API triggers the same state |
-| 3.3 No double payment | `PaymentStep.tsx`: `useActionState`'s `pending` disables Pay and shows "Processing payment…"; a ref guard drops clicks that arrive before React re-renders; one `Idempotency-Key` per quote + payment method is reused on retries |
+| 3.3 No double payment | `PaymentStep.tsx`: `useActionState`'s `pending` disables Pay and shows "Processing payment…"; a ref guard drops clicks that arrive before React re-renders; one `Idempotency-Key` per quote + payment method is reused on retries (and replaced after a definite decline). If the API answers 202, the page shows **Confirming your payment**, freezes the price-lock display ("Price secured"), and polls `checkPayment` every 2 s until the policy is issued or the payment fails |
 
 | Folder | Contents |
 | ------ | -------- |
