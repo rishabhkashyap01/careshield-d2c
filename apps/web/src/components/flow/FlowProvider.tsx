@@ -5,22 +5,28 @@ import {
   useActionState,
   useCallback,
   useContext,
-  useMemo,
   useState,
   useTransition,
   type ReactNode,
 } from 'react';
 import { requestQuote } from '@/app/actions';
 import { useCountdown } from '@/hooks/useCountdown';
+import { anchorLock, timed, type LockAnchor, type Timing } from '@/lib/lock-clock';
 import type { IssuedPolicy, Quote, QuoteFormState, QuoteInputs } from '@/lib/types';
 
 export type FlowView = 'details' | 'health' | 'payment' | 'done';
 
 interface Active {
   quote: Quote;
-  /** Client clock when the quote arrived — used to correct device clock skew. */
-  receivedAt: number;
+  /** Server-reported lock time, anchored to the local monotonic clock. */
+  lock: LockAnchor;
 }
+
+/** Re-anchor the countdown on every quote the server sends back. */
+const activate = (quote: Quote, timing: Timing): Active => ({
+  quote,
+  lock: anchorLock(quote.remainingMs, timing, Date.now()),
+});
 
 interface FlowContextValue {
   isOpen: boolean;
@@ -51,7 +57,8 @@ interface FlowContextValue {
   recalculate: (overrides?: Partial<QuoteInputs>) => void;
   recalculating: boolean;
 
-  onDeclared: (q: Quote) => void;
+  /** Store the declared quote; `timing` is the round trip of that request. */
+  onDeclared: (q: Quote, timing: Timing) => void;
   onPaid: (p: IssuedPolicy) => void;
   startOver: () => void;
   /** Discard the current quote and close the dialog. */
@@ -93,10 +100,10 @@ export function FlowProvider({ children }: { children: ReactNode }) {
   // Step 1 — useActionState drives the quote form's pending + error state.
   const [quoteState, quoteAction, quotePending] = useActionState<QuoteFormState, FormData>(
     async (prev, fd) => {
-      const result = await requestQuote(prev, fd);
+      const { result, timing } = await timed(() => requestQuote(prev, fd));
       setDiscarded(false);
       if (result.status === 'success') {
-        setActive({ quote: result.quote, receivedAt: Date.now() });
+        setActive(activate(result.quote, timing));
         setPolicy(null);
         setEditing(false);
       }
@@ -105,18 +112,9 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     INITIAL,
   );
 
-  const lock = useMemo(
-    () =>
-      active && !policy
-        ? {
-            expiresAt: active.quote.expiresAt,
-            serverTime: active.quote.serverTime,
-            receivedAt: active.receivedAt,
-          }
-        : null,
-    [active, policy],
+  const { remainingMs, expired: timerExpired } = useCountdown(
+    active && !policy ? active.lock : null,
   );
-  const { remainingMs, expired: timerExpired } = useCountdown(lock);
   const quote = active?.quote ?? null;
   // The server can also tell us it expired (e.g. device clock very wrong).
   const expired =
@@ -176,7 +174,7 @@ export function FlowProvider({ children }: { children: ReactNode }) {
     markExpired: () => quote && setServerExpiredFor(quote.quoteId),
     recalculate,
     recalculating,
-    onDeclared: (q) => setActive((a) => (a ? { ...a, quote: q } : a)),
+    onDeclared: (q, timing) => setActive((a) => (a ? activate(q, timing) : a)),
     onPaid: setPolicy,
     startOver: () => {
       setActive(null);

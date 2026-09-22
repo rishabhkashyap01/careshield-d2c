@@ -13,6 +13,23 @@ import { isQuoteExpired } from './domain/quote-lock.js';
 /** Either the root client or an interactive-transaction client. */
 export type Db = PrismaService | Prisma.TransactionClient;
 
+/** Why a status change happened — stored in quote_status_transitions.trigger_context. */
+export type AuditAction =
+  | 'quote.created'
+  | 'quote.medical_declared'
+  | 'checkout.premium_paid'
+  | 'checkout.policy_issued';
+
+export interface AuditContext {
+  action: AuditAction;
+  requestId?: string;
+  callerIp?: string;
+  userAgent?: string;
+  idempotencyKey?: string;
+  paymentReference?: string;
+  policyNumber?: string;
+}
+
 /**
  * Data-access layer for quotes. All status changes go through `transition`,
  * which performs a compare-and-set (`WHERE id = ? AND status = <from>`) so two
@@ -30,6 +47,21 @@ export class QuotesRepository {
 
   create(data: Prisma.QuoteCreateInput, db: Db = this.prisma): Promise<Quote> {
     return db.quote.create({ data });
+  }
+
+  /**
+   * Tell the audit trigger WHY the next status change in this transaction
+   * happens. `set_config(..., true)` is transaction-scoped, so the context can
+   * never leak to another request sharing the pooled connection — which is
+   * also why this only accepts a transaction client. Changes made without it
+   * are still recorded, as {"source": "database"}.
+   */
+  async setAuditContext(
+    tx: Prisma.TransactionClient,
+    context: AuditContext,
+  ): Promise<void> {
+    const json = JSON.stringify({ source: 'api', ...context });
+    await tx.$executeRaw`SELECT set_config('app.audit_context', ${json}, true)`;
   }
 
   /**

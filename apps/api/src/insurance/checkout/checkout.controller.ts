@@ -7,6 +7,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { Meta, type RequestMeta } from '../../common/request-meta.js';
 import { CheckoutDto } from './checkout.dto.js';
 import { CheckoutService } from './checkout.service.js';
 import type { PolicyResponse } from './policy-response.js';
@@ -23,6 +24,7 @@ export class CheckoutController {
   async pay(
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Body() dto: CheckoutDto,
+    @Meta() meta: RequestMeta,
     @Res({ passthrough: true }) res: Response,
   ): Promise<PolicyResponse> {
     if (!idempotencyKey) {
@@ -41,7 +43,7 @@ export class CheckoutController {
       });
     }
 
-    const outcome = await this.checkout.checkout(idempotencyKey, dto);
+    const outcome = await this.checkout.checkout(idempotencyKey, dto, meta);
     res.status(outcome.status);
     res.setHeader('Idempotency-Key', idempotencyKey);
     if (outcome.replayed) res.setHeader('Idempotent-Replayed', 'true');

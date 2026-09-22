@@ -17,11 +17,15 @@ export interface QuoteResponse {
     total: string;
   };
   createdAt: string;
-  /** Quote lock deadline — the frontend countdown (Phase 3) runs off this. */
+  /** Quote lock deadline (for display and records — clients must not count down to it). */
   expiresAt: string;
   lockDurationSeconds: number;
-  /** Server clock at response time, so clients can correct for clock skew. */
-  serverTime: string;
+  /**
+   * Milliseconds of lock left, measured on the SERVER clock when this response
+   * was built. The countdown runs off this relative value, so a wrong or
+   * changed device clock cannot make the timer early or late.
+   */
+  remainingMs: number;
   isExpired: boolean;
 }
 
@@ -43,7 +47,7 @@ export function toQuoteResponse(quote: Quote, now = new Date()): QuoteResponse {
     createdAt: quote.createdAt.toISOString(),
     expiresAt: quote.expiresAt.toISOString(),
     lockDurationSeconds: QUOTE_LOCK_MS / 1000,
-    serverTime: now.toISOString(),
+    remainingMs: Math.max(0, quote.expiresAt.getTime() - now.getTime()),
     isExpired: isQuoteExpired(quote, now),
   };
 }

@@ -36,7 +36,7 @@ Browser ── form submit ──► Server Action (src/app/actions.ts) ── f
 | Task | How |
 | ---- | --- |
 | 3.1 Accessible UI | Native `<dialog>` (focus trap, Esc to close); real labels and `fieldset`/`legend`; focus moves to each step's heading; `prefers-reduced-motion` respected |
-| 3.2 Countdown | `hooks/useCountdown.ts` corrects for device-clock skew using the server's `serverTime`. At 0 the buttons are disabled and **Recalculate premium** re-quotes. A 410 from the API triggers the same state |
+| 3.2 Countdown | The API sends `remainingMs`, measured on its own clock. `lib/lock-clock.ts` anchors it when the response arrives (minus half the round trip) and then only measures elapsed time locally, so a wrong device clock can't end the timer early or keep it running late; sleeping or turning the clock back never adds time. `hooks/useCountdown.ts` ticks it. At 0 the buttons are disabled and **Recalculate premium** re-quotes. A 410 from the API triggers the same state |
 | 3.3 No double payment | `PaymentStep.tsx`: `useActionState`'s `pending` disables Pay and shows "Processing payment…"; a ref guard drops clicks that arrive before React re-renders; one `Idempotency-Key` per quote + payment method is reused on retries |
 
 | Folder | Contents |
@@ -45,5 +45,6 @@ Browser ── form submit ──► Server Action (src/app/actions.ts) ── f
 | `src/components/flow/` | The pop-up, its steps and its pieces |
 | `src/components/landing/` | Landing page sections |
 | `src/components/ui.tsx`, `icons.tsx` | Buttons, alerts, yes/no control, inline SVG icons |
+| `src/lib/lock-clock.ts` | countdown maths, tested by `lock-clock.test.ts` (`npm test -w @careshield/web`) |
 | `src/hooks/` | `useCountdown`, `useSubmit` (submits without React's form reset, so answers survive errors), `useRevealInvalid` |
 | `src/lib/` | Server-only API client, shared types, formatting |

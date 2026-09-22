@@ -87,6 +87,12 @@ describe('POST /api/v1/insurance/quote (e2e)', () => {
       expect(expiresAt - createdAt).toBe(15 * 60 * 1000); // exact, to the ms
       expect(createdAt).toBeGreaterThanOrEqual(before);
       expect(createdAt).toBeLessThanOrEqual(after);
+      // The countdown's input is server-computed and relative, not a clock time.
+      expect(res.body).not.toHaveProperty('serverTime');
+      expect(res.body.remainingMs).toBeLessThanOrEqual(900_000);
+      expect(res.body.remainingMs).toBeGreaterThanOrEqual(
+        900_000 - (after - before),
+      );
 
       const row = await prisma.quote.findUniqueOrThrow({
         where: { id: res.body.quoteId },

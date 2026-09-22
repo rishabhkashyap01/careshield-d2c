@@ -4,6 +4,7 @@ import { useActionState, useRef } from 'react';
 import { submitDeclaration } from '@/app/actions';
 import { useRevealInvalid } from '@/hooks/useRevealInvalid';
 import { useSubmit } from '@/hooks/useSubmit';
+import { timed } from '@/lib/lock-clock';
 import type { DeclarationState } from '@/lib/types';
 import {
   ArrowLeftIcon,
@@ -33,8 +34,10 @@ export function HealthStep() {
     useFlow();
   const [state, action, pending] = useActionState<DeclarationState, FormData>(
     async (prev, fd) => {
-      const result = await submitDeclaration(quote!.quoteId, prev, fd);
-      if (result.status === 'success') onDeclared(result.quote);
+      const { result, timing } = await timed(() =>
+        submitDeclaration(quote!.quoteId, prev, fd),
+      );
+      if (result.status === 'success') onDeclared(result.quote, timing);
       if (result.status === 'error' && result.expired) markExpired();
       return result;
     },

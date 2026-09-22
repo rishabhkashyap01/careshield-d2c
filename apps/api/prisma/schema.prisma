@@ -56,7 +56,8 @@ model Quote {
   /// Quote lock: the premium is only honoured until this instant (created_at + 15 min).
   expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
 
-  policy Policy?
+  policy            Policy?
+  statusTransitions QuoteStatusTransition[]
 
   @@index([status, expiresAt])
   @@map("quotes")
@@ -84,6 +85,28 @@ model Policy {
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("policies")
+}
+
+/// Immutable, sequential audit trail of quote status changes (security
+/// tracking). Rows are written ONLY by the `record_quote_status_transition`
+/// database trigger and can never be updated or deleted — see the
+/// quote_status_audit migration. The application reads it; it never writes it.
+model QuoteStatusTransition {
+  id             BigInt       @id @default(autoincrement())
+  quoteId        String       @map("quote_id") @db.Uuid
+  quote          Quote        @relation(fields: [quoteId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  /// 1, 2, 3 … per quote, in the order the changes happened.
+  seq            Int
+  /// NULL for the first entry (the quote's creation).
+  fromStatus     QuoteStatus? @map("from_status")
+  toStatus       QuoteStatus  @map("to_status")
+  /// Database clock at the moment of the change.
+  occurredAt     DateTime     @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  /// Why it happened: action, request id, idempotency key, … plus dbUser and txid.
+  triggerContext Json         @map("trigger_context")
+
+  @@unique([quoteId, seq])
+  @@map("quote_status_transitions")
 }
 
 enum IdempotencyStatus {

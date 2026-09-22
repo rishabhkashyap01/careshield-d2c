@@ -12,10 +12,11 @@
     "db:migrate": "npm run db:migrate -w @careshield/api",
     "api:dev": "npm run start:dev -w @careshield/api",
     "web:dev": "npm run dev -w @careshield/web",
-    "test": "npm test -w @careshield/api && npm run test:db -w @careshield/api && npm run test:e2e -w @careshield/api",
+    "test": "npm test -w @careshield/api && npm run test:db -w @careshield/api && npm run test:e2e -w @careshield/api && npm test -w @careshield/web",
     "api:test": "npm test -w @careshield/api",
     "api:test:db": "npm run test:db -w @careshield/api",
     "api:test:e2e": "npm run test:e2e -w @careshield/api",
+    "web:test": "npm test -w @careshield/web",
     "lint": "npm run lint -w @careshield/api && npm run lint -w @careshield/web",
     "build": "npm run build -w @careshield/api && npm run build -w @careshield/web"
   }

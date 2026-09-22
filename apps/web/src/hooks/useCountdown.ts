@@ -1,41 +1,50 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { type LockAnchor, remainingFrom } from '@/lib/lock-clock';
 
 /**
- * Countdown to a server-issued deadline (Task 3.2).
- *
- * The device clock can be wrong, so we measure the offset between the server's
- * clock (`serverTime` in the API response) and ours at the moment the response
- * arrived, and count down against the corrected clock.
+ * Countdown for the quote lock (Task 3.2). Driven by the server-computed
+ * remaining time captured in `anchor` (see lib/lock-clock.ts), never by
+ * comparing the device clock with `expiresAt`.
  */
-export function useCountdown(
-  lock: { expiresAt: string; serverTime: string; receivedAt: number } | null,
-) {
-  const deadline = lock ? Date.parse(lock.expiresAt) : NaN;
-  const skew = lock ? Date.parse(lock.serverTime) - lock.receivedAt : 0; // server − client
-
-  const compute = () => (Number.isNaN(deadline) ? 0 : Math.max(0, deadline - (Date.now() + skew)));
-  const [remainingMs, setRemainingMs] = useState(compute);
+export function useCountdown(anchor: LockAnchor | null) {
+  // The latest reading, tagged with the anchor it belongs to.
+  const [reading, setReading] = useState<{ anchor: LockAnchor | null; ms: number }>({
+    anchor: null,
+    ms: 0,
+  });
 
   useEffect(() => {
-    if (Number.isNaN(deadline)) return;
-    // Recompute right away when a new quote arrives, then keep it fresh.
+    if (!anchor) return;
     const tick = () => {
-      const next = compute();
-      setRemainingMs(next);
-      return next;
+      const ms = remainingFrom(anchor, performance.now(), Date.now());
+      setReading({ anchor, ms });
+      return ms;
     };
     const id = window.setInterval(() => {
       if (tick() === 0) window.clearInterval(id);
     }, 250);
     const first = window.setTimeout(tick, 0);
+    // Coming back to the tab (or waking the computer) re-reads the clock at once.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.clearInterval(id);
       window.clearTimeout(first);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deadline, skew]);
+  }, [anchor]);
 
-  return { remainingMs, expired: !Number.isNaN(deadline) && remainingMs === 0 };
+  // Until the first tick for a new anchor, show what the server just told us
+  // (this keeps render pure and avoids a one-frame "expired" flash).
+  const remainingMs = !anchor
+    ? 0
+    : reading.anchor === anchor
+      ? reading.ms
+      : anchor.remainingAtReceipt;
+
+  return { remainingMs, expired: !!anchor && remainingMs === 0 };
 }

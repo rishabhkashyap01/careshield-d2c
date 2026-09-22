@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, type Quote } from '../../generated/prisma/client.js';
 import { QuoteStatus } from '../../generated/prisma/enums.js';
+import type { RequestMeta } from '../../common/request-meta.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { isQuoteExpired } from '../domain/quote-lock.js';
 import { QuoteExpiredError } from '../domain/quote-state-machine.js';
@@ -45,9 +46,9 @@ export interface CheckoutOutcome {
  *     SELECT … FROM quotes WHERE id = $1 FOR UPDATE   ← serialises checkouts per quote
  *     check: declared, not expired, not already paid
  *     charge payment gateway (idempotent on the same key)
- *     quotes: MEDICAL_DECLARED → PREMIUM_PAID
+ *     quotes: MEDICAL_DECLARED → PREMIUM_PAID      (+ audit row, trigger)
  *     policies: INSERT
- *     quotes: PREMIUM_PAID → POLICY_ISSUED
+ *     quotes: PREMIUM_PAID → POLICY_ISSUED         (+ audit row, trigger)
  *     idempotency_keys: COMPLETED + stored response
  *   COMMIT
  *
@@ -72,6 +73,7 @@ export class CheckoutService {
   async checkout(
     idempotencyKey: string,
     dto: CheckoutDto,
+    meta?: RequestMeta,
   ): Promise<CheckoutOutcome> {
     const requestHash = hashRequest({
       quoteId: dto.quoteId,
@@ -94,7 +96,7 @@ export class CheckoutService {
 
     try {
       const body = await this.prisma.$transaction(
-        (tx) => this.bindAndIssue(tx, idempotencyKey, dto),
+        (tx) => this.bindAndIssue(tx, idempotencyKey, dto, meta),
         { timeout: 20_000, maxWait: 5_000 },
       );
       this.logger.log(`Issued ${body.policyNumber} for quote ${dto.quoteId}`);
@@ -118,6 +120,7 @@ export class CheckoutService {
     tx: Prisma.TransactionClient,
     idempotencyKey: string,
     dto: CheckoutDto,
+    meta?: RequestMeta,
   ): Promise<PolicyResponse> {
     const now = new Date();
 
@@ -141,6 +144,12 @@ export class CheckoutService {
       description: `CareShield Max premium for quote ${quote.id}`,
     });
 
+    await this.quotes.setAuditContext(tx, {
+      action: 'checkout.premium_paid',
+      ...meta,
+      idempotencyKey,
+      paymentReference: charge.reference,
+    });
     await this.quotes.transition(
       quote.id,
       QuoteStatus.MEDICAL_DECLARED,
@@ -150,6 +159,12 @@ export class CheckoutService {
       now,
     );
     const policy = await this.issuer.issue(tx, quote, charge, now);
+    await this.quotes.setAuditContext(tx, {
+      action: 'checkout.policy_issued',
+      ...meta,
+      idempotencyKey,
+      policyNumber: policy.policyNumber,
+    });
     await this.quotes.transition(
       quote.id,
       QuoteStatus.PREMIUM_PAID,

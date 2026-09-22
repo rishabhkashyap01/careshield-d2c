@@ -350,3 +350,138 @@ describe('policies', () => {
     expect((await repo.findByIdOrThrow(q.id)).status).toBe(PREMIUM_PAID);
   });
 });
+
+describe('State-machine audit trail (quote_status_transitions)', () => {
+  const trail = (quoteId: string) =>
+    prisma.quoteStatusTransition.findMany({
+      where: { quoteId },
+      orderBy: { seq: 'asc' },
+    });
+
+  it('records every status change as a sequential row, starting at creation', async () => {
+    const q = await repo.create(quoteInput());
+    await toPaid(q.id);
+    await prisma.$transaction(async (tx) => {
+      await tx.policy.create({ data: policyInput(q.id) });
+      await repo.transition(q.id, PREMIUM_PAID, POLICY_ISSUED, {}, tx);
+    });
+
+    const rows = await trail(q.id);
+    expect(rows.map((r) => [r.seq, r.fromStatus, r.toStatus])).toEqual([
+      [1, null, QUOTE_GENERATED],
+      [2, QUOTE_GENERATED, MEDICAL_DECLARED],
+      [3, MEDICAL_DECLARED, PREMIUM_PAID],
+      [4, PREMIUM_PAID, POLICY_ISSUED],
+    ]);
+    const times = rows.map((r) => r.occurredAt.getTime());
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+  });
+
+  it('records the application context, and the database adds dbUser and txid itself', async () => {
+    const q = await prisma.$transaction(async (tx) => {
+      await repo.setAuditContext(tx, {
+        action: 'quote.created',
+        requestId: 'req-123',
+        // A caller cannot impersonate another database user:
+        ...({ dbUser: 'someone-else' } as object),
+      });
+      return repo.create(quoteInput(), tx);
+    });
+    const [row] = await trail(q.id);
+    expect(row.triggerContext).toMatchObject({
+      source: 'api',
+      action: 'quote.created',
+      requestId: 'req-123',
+      dbUser: 'careshield',
+    });
+    expect((row.triggerContext as { txid: string }).txid).toMatch(/^\d+$/);
+  });
+
+  it('still records changes made without context (manual SQL), as source "database"', async () => {
+    const q = await repo.create(quoteInput());
+    const [row] = await trail(q.id);
+    expect(row.triggerContext).toMatchObject({ source: 'database' });
+    expect(row.triggerContext).not.toHaveProperty('action');
+  });
+
+  it('does not leak context to the next transaction on the same pool', async () => {
+    await prisma.$transaction(async (tx) => {
+      await repo.setAuditContext(tx, { action: 'quote.created' });
+      await repo.create(quoteInput(), tx);
+    });
+    const later = await repo.create(quoteInput());
+    const [row] = await trail(later.id);
+    expect(row.triggerContext).toMatchObject({ source: 'database' });
+  });
+
+  it('never loses a status change because of bad context', async () => {
+    const q = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.audit_context', 'not json', true)`;
+      return repo.create(quoteInput(), tx);
+    });
+    const [row] = await trail(q.id);
+    expect(row.triggerContext).toMatchObject({
+      source: 'database',
+      invalidAppContext: true,
+    });
+  });
+
+  it('leaves no row for a transition that was rolled back or refused', async () => {
+    const q = await repo.create(quoteInput());
+    await toPaid(q.id);
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.policy.create({ data: policyInput(q.id) });
+        await repo.transition(q.id, PREMIUM_PAID, POLICY_ISSUED, {}, tx);
+        throw new Error('crash after issuing');
+      }),
+    ).rejects.toThrow('crash after issuing');
+    await expect(
+      prisma.$executeRaw`UPDATE quotes SET status = 'QUOTE_GENERATED' WHERE id = ${q.id}::uuid`,
+    ).rejects.toThrow(/Illegal quote transition/);
+
+    expect((await trail(q.id)).map((r) => r.toStatus)).toEqual([
+      QUOTE_GENERATED,
+      MEDICAL_DECLARED,
+      PREMIUM_PAID,
+    ]);
+  });
+
+  it('does not log updates that leave the status unchanged', async () => {
+    const q = await repo.create(quoteInput());
+    await prisma.quote.update({
+      where: { id: q.id },
+      data: { medicalDeclaredAt: new Date() },
+    });
+    expect(await trail(q.id)).toHaveLength(1);
+  });
+
+  it('is append-only: rows cannot be updated or deleted, and audited quotes cannot be deleted', async () => {
+    const q = await repo.create(quoteInput());
+    await expect(
+      prisma.$executeRaw`UPDATE quote_status_transitions SET to_status = 'POLICY_ISSUED' WHERE quote_id = ${q.id}::uuid`,
+    ).rejects.toThrow(/append-only: UPDATE/);
+    await expect(
+      prisma.$executeRaw`DELETE FROM quote_status_transitions WHERE quote_id = ${q.id}::uuid`,
+    ).rejects.toThrow(/append-only: DELETE/);
+    await expect(
+      prisma.quote.delete({ where: { id: q.id } }),
+    ).rejects.toThrow();
+    expect(await trail(q.id)).toHaveLength(1);
+  });
+
+  it('gives concurrent changes to one quote distinct, gap-free sequence numbers', async () => {
+    const q = await repo.create(quoteInput());
+    await repo.transition(q.id, QUOTE_GENERATED, MEDICAL_DECLARED, {
+      medicalDeclaration: declaration,
+      medicalDeclaredAt: new Date(),
+    });
+    // Two racing payments: exactly one wins, and the trail stays 1, 2, 3.
+    const results = await Promise.allSettled([
+      repo.transition(q.id, MEDICAL_DECLARED, PREMIUM_PAID),
+      repo.transition(q.id, MEDICAL_DECLARED, PREMIUM_PAID),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect((await trail(q.id)).map((r) => r.seq)).toEqual([1, 2, 3]);
+  });
+});

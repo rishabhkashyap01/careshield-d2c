@@ -17,9 +17,11 @@ export interface Quote {
     total: string;
   };
   createdAt: string;
+  /** Deadline, for display only — the countdown uses remainingMs. */
   expiresAt: string;
   lockDurationSeconds: number;
-  serverTime: string;
+  /** Lock left in ms, measured by the server when it answered. */
+  remainingMs: number;
   isExpired: boolean;
 }
 

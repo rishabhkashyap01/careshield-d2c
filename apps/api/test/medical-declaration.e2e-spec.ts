@@ -105,6 +105,26 @@ describe('medical declaration (e2e)', () => {
     expect(res.body.error).toBe('QuoteExpired');
   });
 
+  it('returns the lock time still left, computed by the server (remainingMs)', async () => {
+    const created = new Date(Date.now() - 5 * 60_000); // quoted 5 minutes ago
+    const q = await prisma.quote.create({
+      data: {
+        age: 30,
+        hasPreExistingConditions: false,
+        basePremium: '10000.00',
+        totalPremium: '10000.00',
+        createdAt: created,
+        expiresAt: new Date(created.getTime() + 15 * 60_000),
+      },
+    });
+    const before = Date.now();
+    const res = await declare(q.id, clean).expect(200);
+    const after = Date.now();
+    const deadline = created.getTime() + 15 * 60_000;
+    expect(res.body.remainingMs).toBeLessThanOrEqual(deadline - before);
+    expect(res.body.remainingMs).toBeGreaterThanOrEqual(deadline - after);
+  });
+
   it.each([
     [
       'missing confirmation',

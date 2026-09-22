@@ -26,7 +26,7 @@ npm run api:dev                           # terminal 1 → http://localhost:4000
 npm run web:dev                           # terminal 2 → http://localhost:3000
 ```
 
-`npm test` runs every API suite: unit, database and end-to-end. They need the database running.
+`npm test` runs every suite: the API's unit, database and end-to-end tests (they need the database running) and the website's countdown tests.
 
 **Deploying:** see [DEPLOY.md](DEPLOY.md). It covers GitHub, Neon and two Vercel projects, one for the API and one for the website.
 
@@ -40,16 +40,19 @@ npm run web:dev                           # terminal 2 → http://localhost:3000
 | 2.2 | ₹10,000 base, +50% if age > 45, +₹5,000 for pre-existing conditions | `src/insurance/domain/premium-calculator.ts` |
 | 2.3 | `expires_at` = exactly 15 minutes after creation | `src/insurance/quotes.service.ts` |
 | 3.1 | Accessible Tailwind UI that posts through Server Actions | `apps/web/src/app/actions.ts`, `components/flow/` |
-| 3.2 | Countdown from the server's `expires_at`; payment disabled at 0; recalculate | `apps/web/src/hooks/useCountdown.ts`, `components/flow/ExpiredPanel.tsx` |
+| 3.2 | Countdown from the server-computed `remainingMs` (device clock never trusted); payment disabled at 0; recalculate | `apps/web/src/lib/lock-clock.ts`, `hooks/useCountdown.ts`, `components/flow/ExpiredPanel.tsx` |
 | 3.3 | `useActionState` / `useTransition` loading state that prevents double-clicks | `apps/web/src/components/flow/PaymentStep.tsx` |
 | 4.1 | Atomic checkout transaction with rollback | `apps/api/src/insurance/checkout/checkout.service.ts` |
 | 4.2 | `Idempotency-Key`: no double charges | `apps/api/src/insurance/checkout/idempotency.service.ts` |
+| + | Immutable, sequential audit trail of every status change (`quote_id, from, to, time, context`) | `apps/api/prisma/migrations/20260922100000_quote_status_audit/`, `src/insurance/quotes.repository.ts` |
 
 Details are in [apps/api/README.md](apps/api/README.md) and [apps/web/README.md](apps/web/README.md).
 
 ## Design decisions
 
 - **Rules are enforced in the database as well as the API.** CHECK constraints and triggers guard the state machine, the 15-minute lock, fixed prices, and "a policy only for a paid quote, at the quoted amount". The app gives friendly errors; the database is the final guarantee.
+- **Every status change is audited by the database.** A trigger writes an append-only row to `quote_status_transitions` for each change, with why it happened (action, request id, idempotency key, payment reference) and who (database user, transaction). A rolled-back change leaves no row; manual SQL is recorded too.
+- **The countdown never trusts the device clock.** The API sends the lock time left, measured on its own clock; the browser only measures elapsed time from when that answer arrived.
 - **A quote is a fixed offer.** Its price and expiry never change. New details mean a new quote, and an abandoned quote simply expires.
 - **The browser never calls the API directly.** Server Actions do, so the API address stays server-side.
 - **Money is exact.** It's `NUMERIC(10,2)` in the database, `Decimal` in the API, and 2-decimal strings in JSON.
