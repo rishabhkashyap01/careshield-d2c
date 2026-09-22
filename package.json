@@ -17,6 +17,7 @@
     "api:test:db": "npm run test:db -w @careshield/api",
     "api:test:e2e": "npm run test:e2e -w @careshield/api",
     "web:test": "npm test -w @careshield/web",
+    "test:report": "node scripts/test-report/run.mjs",
     "lint": "npm run lint -w @careshield/api && npm run lint -w @careshield/web",
     "build": "npm run build -w @careshield/api && npm run build -w @careshield/web"
   }

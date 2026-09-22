@@ -30,6 +30,8 @@ npm run web:dev                           # terminal 2 → http://localhost:3000
 
 219 tests in four suites. `npm test` runs them all, in about 45 s; the API suites need the database running.
 
+**Visual report:** `npm run test:report` runs every suite and writes `reports/test-report.html`, a single page you open in any browser (add `-- --open` to open it for you). It shows pass/fail at a glance, every test as a square, the purchase journey, the generated tests and their random-case counts, the slowest files, and a searchable list. Failures come first, with fast-check's shrunk counterexample and seed. The script is `scripts/test-report/run.mjs` and the page is `scripts/test-report/template.html`.
+
 | Suite | Command | What it covers |
 | --- | --- | --- |
 | API unit | `npm run api:test` | Pricing, lock, state machine, eligibility, validation, webhooks (no database) |

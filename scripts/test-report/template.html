@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareShield Test Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f5f4fb; --surface: #ffffff; --surface-2: #f0eefa; --surface-3: #e8e5f6;
+    --ink: #0c0a1d; --muted: #5d5a73; --faint: #8d89a5; --line: #e3e0ee;
+    --brand: #5f2bf5; --brand-soft: #ece7ff; --brand-ink: #3a17a8;
+    --pass: #0f9f6e; --pass-soft: #dcf6ea;
+    --gen: #7047ff; --gen-soft: #ebe5ff;
+    --fail: #d02f5a; --fail-soft: #fde6ec;
+    --skip: #a9a6ba;
+    --hero-a: #150838; --hero-b: #2a1270;
+    --shadow: 0 1px 2px rgb(16 12 48 / .04), 0 10px 30px -14px rgb(16 12 48 / .18);
+    --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0917; --surface: #141127; --surface-2: #1b1733; --surface-3: #241f42;
+      --ink: #eeecf8; --muted: #aaa6c6; --faint: #7c789a; --line: #2a2647;
+      --brand: #a491ff; --brand-soft: #251c52; --brand-ink: #d2c8ff;
+      --pass: #3ddc9f; --pass-soft: #0f2f24; --gen: #a491ff; --gen-soft: #221a4d;
+      --fail: #ff7898; --fail-soft: #3a1422; --skip: #5e5a7a;
+      --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 12px 30px -14px rgb(0 0 0 / .7);
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 20px 80px; }
+  h1, h2, h3 { margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+  p { margin: 0; }
+  button { font: inherit; color: inherit; }
+  .mono { font-family: var(--mono); }
+  .tabular { font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    border-radius: 28px; padding: clamp(24px, 4vw, 44px); color: #fff; position: relative; overflow: hidden;
+    background:
+      radial-gradient(800px 360px at 90% -20%, rgb(112 71 255 / .55), transparent 60%),
+      radial-gradient(500px 260px at -5% 120%, rgb(16 200 136 / .20), transparent 60%),
+      linear-gradient(160deg, var(--hero-a), var(--hero-b));
+    box-shadow: 0 24px 60px -28px rgb(40 20 120 / .55);
+  }
+  .hero.has-fail { background: radial-gradient(800px 360px at 90% -20%, rgb(255 90 130 / .45), transparent 60%), linear-gradient(160deg, #2a0816, #4a1230); }
+  .hero::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(to right, rgb(255 255 255 / .05) 1px, transparent 1px), linear-gradient(to bottom, rgb(255 255 255 / .05) 1px, transparent 1px);
+    background-size: 40px 40px; mask-image: radial-gradient(ellipse at 70% 0%, black 25%, transparent 70%); }
+  .hero > * { position: relative; z-index: 1; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font: 500 12.5px/1.4 var(--mono); color: rgb(255 255 255 / .62); }
+  .meta b { color: #fff; font-weight: 500; }
+  .hero-main { display: grid; grid-template-columns: auto 1fr; gap: clamp(20px, 4vw, 44px); align-items: center; margin-top: 26px; }
+  .ring-wrap { position: relative; width: clamp(150px, 20vw, 190px); aspect-ratio: 1; max-width: 100%; }
+  .ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .ring-center .big { font-size: clamp(38px, 5vw, 52px); font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+  .ring-center .small { font-size: 12.5px; color: rgb(255 255 255 / .7); margin-top: 6px; }
+  .verdict { font-size: clamp(28px, 4.2vw, 46px); font-weight: 700; line-height: 1.05; }
+  .verdict em { font-style: normal; background: linear-gradient(90deg, #c2b4ff, #3ddc9f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .has-fail .verdict em { background: linear-gradient(90deg, #ffb3c4, #ff7898); -webkit-background-clip: text; background-clip: text; }
+  .sub { color: rgb(255 255 255 / .75); margin-top: 10px; font-size: 16px; max-width: 62ch; }
+  .kpis { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+  .kpi { background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .14); border-radius: 14px; padding: 10px 14px; min-width: 120px; }
+  .kpi .v { font: 600 20px/1.2 var(--sans); font-variant-numeric: tabular-nums; }
+  .kpi .l { font-size: 12px; color: rgb(255 255 255 / .62); }
+  @media (max-width: 640px) { .hero-main { grid-template-columns: 1fr; justify-items: start; } }
+
+  /* ---------- sections ---------- */
+  section { margin-top: 44px; }
+  .sec-head { display: flex; justify-content: space-between; align-items: end; gap: 12px 20px; flex-wrap: wrap; margin-bottom: 16px; }
+  .sec-head h2 { font-size: clamp(21px, 2.6vw, 26px); }
+  .sec-head p { color: var(--muted); max-width: 70ch; margin-top: 4px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); }
+
+  /* suites */
+  .suites { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .suite { padding: 18px; display: grid; gap: 10px; align-content: start; text-align: left; cursor: pointer; border: 1px solid var(--line); background: var(--surface); border-radius: 20px; box-shadow: var(--shadow); transition: transform .15s, border-color .15s; }
+  .suite:hover { transform: translateY(-2px); border-color: var(--brand); }
+  .suite .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .suite h3 { font-size: 16px; }
+  .suite .count { font: 600 26px/1 var(--sans); font-variant-numeric: tabular-nums; }
+  .suite .count small { font-size: 14px; color: var(--faint); font-weight: 500; }
+  .suite .covers { color: var(--muted); font-size: 13.5px; }
+  .suite.bad { border-color: var(--fail); box-shadow: 0 0 0 3px var(--fail-soft), var(--shadow); }
+  .suite .warn { color: var(--fail); font-size: 13px; font-weight: 600; }
+  .suite .foot { display: flex; justify-content: space-between; gap: 8px; font: 12px/1.3 var(--mono); color: var(--faint); flex-wrap: wrap; }
+  .bar { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; display: flex; }
+  .bar i { display: block; height: 100%; }
+  .bar .p { background: var(--pass); } .bar .g { background: var(--gen); } .bar .f { background: var(--fail); } .bar .s { background: var(--skip); }
+
+  /* mosaic */
+  .mosaic { padding: 20px; display: grid; gap: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+  .mgroup { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: start; }
+  .mgroup .lbl { font-size: 13px; font-weight: 600; padding-top: 2px; }
+  .mgroup .lbl small { display: block; color: var(--faint); font: 500 12px/1.3 var(--mono); }
+  .cells { display: flex; flex-wrap: wrap; gap: 4px; }
+  .cellfile { display: flex; flex-wrap: wrap; gap: 4px; padding-right: 8px; margin-right: 4px; border-right: 1px dashed var(--line); }
+  .cellfile:last-child { border-right: 0; }
+  .cell { width: 16px; height: 16px; border-radius: 5px; border: 0; padding: 0; cursor: pointer; transition: transform .12s; }
+  .cell:hover, .cell:focus-visible { transform: scale(1.35); z-index: 2; }
+  .cell.passed { background: var(--pass); } .cell.gen { background: var(--gen); }
+  .cell.failed { background: var(--fail); box-shadow: 0 0 0 3px var(--fail-soft); } .cell.skipped { background: var(--skip); }
+  .cell.hit { outline: 2px solid var(--ink); outline-offset: 1px; }
+  @media (max-width: 640px) { .mgroup { grid-template-columns: 1fr; gap: 8px; } }
+  #tip { position: fixed; z-index: 50; pointer-events: none; max-width: 340px; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.4; box-shadow: 0 10px 30px rgb(0 0 0 / .3); opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s; }
+  #tip.on { opacity: 1; transform: none; }
+  #tip .t-file { font: 11.5px/1.3 var(--mono); opacity: .7; margin-top: 4px; overflow-wrap: anywhere; }
+
+  /* journey */
+  .journey { display: grid; gap: 14px; }
+  .steps { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 10px; align-items: stretch; }
+  .arrow { align-self: center; color: var(--faint); font-size: 22px; }
+  .stage { padding: 18px; display: grid; gap: 10px; align-content: start; cursor: pointer; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 20px; box-shadow: var(--shadow); transition: border-color .15s, transform .15s; }
+  .stage:hover { border-color: var(--brand); transform: translateY(-2px); }
+  .stage .kicker { font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+  .stage h3 { font-size: 17px; }
+  .stage .nums { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  .stage .nums b { font: 600 24px/1 var(--sans); font-variant-numeric: tabular-nums; }
+  .stage .nums span { font-size: 13px; color: var(--muted); }
+  .stage ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+  .stage li { font-size: 13px; color: var(--muted); display: grid; grid-template-columns: 14px 1fr; gap: 6px; }
+  .stage li svg { margin-top: 3px; }
+  .layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .layer { border-style: dashed; }
+  .layer .kicker { color: var(--brand); }
+  @media (max-width: 860px) { .steps { grid-template-columns: 1fr; } .arrow { transform: rotate(90deg); justify-self: center; } .layers { grid-template-columns: 1fr; } }
+
+  /* generated */
+  .gen-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 14px; }
+  @media (max-width: 860px) { .gen-grid { grid-template-columns: 1fr; } }
+  .gen-hero { padding: 22px; display: grid; gap: 14px; align-content: start; background: linear-gradient(160deg, var(--gen-soft), var(--surface)); }
+  .gen-hero .huge { font: 700 clamp(40px, 5vw, 56px)/1 var(--sans); letter-spacing: -.03em; color: var(--gen); font-variant-numeric: tabular-nums; }
+  .gen-hero p { color: var(--muted); }
+  .gen-hero .how { display: grid; gap: 8px; }
+  .step-line { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 14px; }
+  .step-line .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--gen); color: #fff; font-size: 12px; font-weight: 600; }
+  pre.cmd { margin: 0; background: var(--hero-a); color: #e7e4f7; border-radius: 12px; padding: 12px 14px; font: 12.5px/1.6 var(--mono); overflow-x: auto; }
+  pre.cmd .c { color: #8e89b0; }
+  .props { padding: 8px 6px; }
+  .prop { display: grid; grid-template-columns: minmax(0, 1fr) 150px 64px; gap: 12px; align-items: center; padding: 9px 14px; border-radius: 12px; }
+  .prop:hover { background: var(--surface-2); }
+  .prop .name { font-size: 13.5px; min-width: 0; }
+  .prop .name small { display: block; color: var(--faint); font: 11.5px/1.3 var(--mono); overflow-wrap: anywhere; }
+  .prop .n { text-align: right; font: 500 13px var(--mono); font-variant-numeric: tabular-nums; }
+  .hbar { height: 8px; background: var(--surface-3); border-radius: 99px; overflow: hidden; }
+  .hbar i { display: block; height: 100%; background: var(--gen); border-radius: 99px; }
+  @media (max-width: 560px) { .prop { grid-template-columns: 1fr 56px; } .prop .hbar { grid-column: 1 / -1; grid-row: 2; } }
+
+  /* time */
+  .time { padding: 18px 20px; display: grid; gap: 10px; }
+  .trow { display: grid; grid-template-columns: minmax(0, 260px) 1fr 70px; gap: 14px; align-items: center; font-size: 13.5px; }
+  .trow .f { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trow .f small { color: var(--faint); font-family: var(--mono); font-size: 11.5px; margin-left: 6px; }
+  .trow .v { text-align: right; font: 500 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .trow .hbar i { background: var(--brand); }
+  .trow .hbar i.gen { background: var(--gen); }
+  @media (max-width: 560px) { .trow { grid-template-columns: 1fr 60px; } .trow .hbar { grid-column: 1 / -1; grid-row: 2; } }
+
+  /* explorer */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 14px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 5; border-radius: 20px 20px 0 0; }
+  .search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; min-width: 0; }
+  .search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; padding: 10px 0; outline: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip .c { opacity: .6; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .results-note { padding: 10px 16px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .linkish { border: 0; background: none; color: var(--brand); cursor: pointer; padding: 0; font-size: 13px; }
+  details.file { border-bottom: 1px solid var(--line); }
+  details.file:last-child { border-bottom: 0; }
+  details.file > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 16px; }
+  details.file > summary::-webkit-details-marker { display: none; }
+  details.file > summary:hover { background: var(--surface-2); }
+  .chev { transition: transform .15s; color: var(--faint); }
+  details[open] > summary .chev { transform: rotate(90deg); }
+  .fname { min-width: 0; }
+  .fname b { font-weight: 600; font-size: 14px; }
+  .fname small { display: block; font: 11.5px/1.3 var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+  .fstat { display: flex; gap: 8px; align-items: center; font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+  .tag { font: 600 11px/1 var(--sans); letter-spacing: .02em; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+  .tag.suite { background: var(--surface-3); color: var(--muted); }
+  .tag.gen { background: var(--gen-soft); color: var(--gen); }
+  .tag.fail { background: var(--fail-soft); color: var(--fail); }
+  .tests { padding: 0 8px 10px 36px; display: grid; }
+  .test { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 7px 8px; border-radius: 10px; }
+  .test:hover { background: var(--surface-2); }
+  .test.hit { background: var(--brand-soft); }
+  .test .ttl { font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; }
+  .test .anc { display: block; font-size: 12px; color: var(--faint); }
+  .test .right { display: flex; gap: 8px; align-items: center; font: 12px var(--mono); color: var(--faint); white-space: nowrap; }
+  .test pre { grid-column: 2 / -1; margin: 6px 0 2px; white-space: pre-wrap; background: var(--fail-soft); color: var(--ink); border-radius: 10px; padding: 10px 12px; font: 12px/1.5 var(--mono); max-height: 260px; overflow: auto; }
+  .ferr { margin: 0 16px 14px 44px; }
+  .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+  mark { background: color-mix(in srgb, var(--brand) 22%, transparent); color: inherit; border-radius: 3px; }
+
+  /* failures */
+  .fails { border-color: var(--fail); }
+  .fails .fitem { padding: 14px 18px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+  .fails .fitem:last-child { border-bottom: 0; }
+  .fails pre { margin: 0; white-space: pre-wrap; background: var(--fail-soft); border-radius: 10px; padding: 10px 12px; font: 12px/1.5 var(--mono); max-height: 260px; overflow: auto; }
+
+  footer { margin-top: 48px; color: var(--faint); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line); padding-top: 18px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const DATA = /*__REPORT_DATA__*/null;
+
+/* ---------------------------------------------------------------- helpers */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtInt = (n) => Math.round(n).toLocaleString('en-IN');
+const fmtMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 0 : 1)} s` : ms >= 1 ? `${Math.round(ms)} ms` : '<1 ms');
+const niceName = (p) => p.split('/').pop().replace(/\.(e2e-spec|int-spec|spec|test)\.ts$/, '').replace(/\.property$/, ' (generated)');
+const ICON = {
+  passed: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--pass)"/><path d="M4 7.2l2 2 4-4.4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  gen: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--gen)"/><path d="M4 7.2l2 2 4-4.4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  failed: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--fail)"/><path d="M4.6 4.6l4.8 4.8M9.4 4.6l-4.8 4.8" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  skipped: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--skip)"/><path d="M4.5 7h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  chev: '<svg class="chev" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  search: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+};
+const iconFor = (t) => (t.status === 'passed' ? (t.generated ? ICON.gen : ICON.passed) : ICON[t.status]);
+
+/* ---------------------------------------------------------------- data */
+if (!DATA) {
+  document.getElementById('app').innerHTML = '<p style="padding:40px">No data — generate this page with <code>npm run test:report</code>.</p>';
+  throw new Error('no data');
+}
+let uid = 0;
+const tests = [];
+const files = [];
+for (const s of DATA.suites) {
+  for (const f of s.files) {
+    const file = { ...f, suite: s, id: `f${files.length}` };
+    file.tests = f.tests.map((t) => ({ ...t, id: `t${uid++}`, file, suite: s, stage: f.stage }));
+    files.push(file);
+    tests.push(...file.tests);
+  }
+}
+const problems = [
+  ...tests.filter((t) => t.status === 'failed').map((t) => ({ kind: 'test', t })),
+  ...files.filter((f) => f.error).map((f) => ({ kind: 'file', f })),
+  ...DATA.suites.filter((s) => s.error).map((s) => ({ kind: 'suite', s })),
+];
+const passed = tests.filter((t) => t.status === 'passed').length;
+const failed = tests.filter((t) => t.status === 'failed').length;
+const skipped = tests.filter((t) => t.status === 'skipped').length;
+const generated = tests.filter((t) => t.generated);
+const cases = generated.reduce((s, t) => s + (t.status === 'passed' ? t.runs : 0), 0);
+const ok = problems.length === 0;
+const stages = Object.fromEntries(DATA.stages.map((st) => [st.id, { ...st, tests: tests.filter((t) => t.stage === st.id) }]));
+
+/* ---------------------------------------------------------------- render */
+const app = document.getElementById('app');
+const when = new Date(DATA.generatedAt);
+const pct = tests.length ? passed / tests.length : 0;
+const C = 2 * Math.PI * 54;
+
+function barHTML(list) {
+  const n = list.length || 1;
+  const w = (k) => (100 * list.filter(k).length) / n;
+  return `<div class="bar" aria-hidden="true">
+    <i class="p" style="width:${w((t) => t.status === 'passed' && !t.generated)}%"></i>
+    <i class="g" style="width:${w((t) => t.status === 'passed' && t.generated)}%"></i>
+    <i class="f" style="width:${w((t) => t.status === 'failed')}%"></i>
+    <i class="s" style="width:${w((t) => t.status === 'skipped')}%"></i></div>`;
+}
+
+app.innerHTML = `
+<header class="hero ${ok ? '' : 'has-fail'}">
+  <div class="meta">
+    <span>CareShield D2C · test report</span>
+    <span>commit <b>${esc(DATA.git.commit || '—')}</b>${DATA.git.dirty ? ' + local changes' : ''}</span>
+    <span>branch <b>${esc(DATA.git.branch || '—')}</b></span>
+    <span><b>${when.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</b></span>
+    <span>Node ${esc(DATA.env.node)} · ${esc(DATA.env.platform)}</span>
+  </div>
+  <div class="hero-main">
+    <div class="ring-wrap" role="img" aria-label="${passed} of ${tests.length} tests passed">
+      <svg viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="54" fill="none" stroke="rgb(255 255 255 / .12)" stroke-width="10"/>
+        <circle cx="60" cy="60" r="54" fill="none" stroke="${ok ? '#3ddc9f' : '#ff7898'}" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}"/>
+      </svg>
+      <div class="ring-center"><div class="big tabular">${fmtInt(passed)}</div><div class="small">of ${fmtInt(tests.length)} passed</div></div>
+    </div>
+    <div>
+      <h1 class="verdict">${ok ? `All tests <em>passing.</em>` : `<em>${problems.length} problem${problems.length > 1 ? 's' : ''}</em> to fix.`}</h1>
+      <p class="sub">${esc(DATA.git.subject || '')}</p>
+      <div class="kpis">
+        <div class="kpi"><div class="v">${fmtMs(DATA.wallMs)}</div><div class="l">total run time</div></div>
+        <div class="kpi"><div class="v">${files.length}</div><div class="l">test files</div></div>
+        <div class="kpi"><div class="v">${generated.length}</div><div class="l">generated tests</div></div>
+        <div class="kpi"><div class="v">≈ ${fmtInt(cases)}</div><div class="l">random cases tried</div></div>
+        ${failed ? `<div class="kpi"><div class="v">${failed}</div><div class="l">failed</div></div>` : ''}
+        ${skipped ? `<div class="kpi"><div class="v">${skipped}</div><div class="l">skipped</div></div>` : ''}
+      </div>
+    </div>
+  </div>
+</header>
+
+${problems.length ? `
+<section id="failures">
+  <div class="sec-head"><div><h2>What failed</h2><p>Fix these first. Each one links to its place in the test list.</p></div></div>
+  <div class="card fails">
+    ${problems.map((p) => p.kind === 'test'
+      ? `<div class="fitem"><div><span class="tag fail">${esc(p.t.suite.name)}</span> <b>${esc(p.t.title)}</b></div>
+         <div class="mono" style="font-size:12px;color:var(--faint)">${esc(p.t.file.path)}</div>
+         ${p.t.failure ? `<pre>${esc(p.t.failure)}</pre>` : ''}
+         <div><button class="linkish" data-goto="${p.t.id}">Show in the test list →</button></div></div>`
+      : p.kind === 'file'
+      ? `<div class="fitem"><div><span class="tag fail">${esc(p.f.suite.name)}</span> <b>${esc(niceName(p.f.path))} could not run</b></div>
+         <div class="mono" style="font-size:12px;color:var(--faint)">${esc(p.f.path)}</div><pre>${esc(p.f.error)}</pre></div>`
+      : `<div class="fitem"><div><span class="tag fail">${esc(p.s.name)}</span> <b>The suite did not run</b></div><pre>${esc(p.s.error)}</pre></div>`).join('')}
+  </div>
+</section>` : ''}
+
+<section id="suites">
+  <div class="sec-head"><div><h2>Four suites</h2><p>From pure logic to the real database and the whole API over HTTP. Click one to see its tests.</p></div></div>
+  <div class="suites">
+    ${DATA.suites.map((s) => {
+      const list = tests.filter((t) => t.suite === s);
+      const p = list.filter((t) => t.status === 'passed').length;
+      const broken = files.filter((f) => f.suite === s && f.error).length + (s.error ? 1 : 0);
+      const bad = list.filter((t) => t.status === 'failed').length;
+      return `<button class="suite ${broken || bad ? 'bad' : ''}" data-suite="${s.id}">
+        <div class="top"><h3>${esc(s.name)}</h3><div class="count">${p}<small> / ${list.length}</small></div></div>
+        ${barHTML(list)}
+        ${broken ? `<p class="warn">⚠ ${s.error ? 'The suite did not run' : `${broken} file${broken > 1 ? 's' : ''} could not run`} — see “What failed”</p>` : ''}
+        <p class="covers">${esc(s.covers)}</p>
+        <div class="foot"><span>${esc(s.command)}</span><span>${fmtMs(s.wallMs)} · ${list.filter((t) => t.generated).length} generated</span></div>
+      </button>`;
+    }).join('')}
+  </div>
+</section>
+
+<section id="mosaic">
+  <div class="sec-head"><div><h2>Every test, at a glance</h2><p>One square per test, grouped by suite and file. Hover to see what it checks; click to jump to it.</p></div></div>
+  <div class="card mosaic">
+    <div class="legend">
+      <span><i class="sw" style="background:var(--pass)"></i>Passed</span>
+      <span><i class="sw" style="background:var(--gen)"></i>Passed · generated (fast-check)</span>
+      <span><i class="sw" style="background:var(--fail)"></i>Failed</span>
+      ${skipped ? '<span><i class="sw" style="background:var(--skip)"></i>Skipped</span>' : ''}
+    </div>
+    ${DATA.suites.map((s) => {
+      const fs = files.filter((f) => f.suite === s);
+      const n = fs.reduce((a, f) => a + f.tests.length, 0);
+      return `<div class="mgroup"><div class="lbl">${esc(s.name)}<small>${n} tests · ${fs.length} files</small></div>
+        <div class="cells">${fs.map((f) => `<div class="cellfile" aria-label="${esc(f.path)}">${f.tests.map((t) =>
+          `<button class="cell ${t.status === 'passed' ? (t.generated ? 'gen' : 'passed') : t.status}" data-tip="${t.id}" data-goto="${t.id}" aria-label="${esc(t.status)}: ${esc(t.title)}"></button>`).join('')}</div>`).join('')}</div></div>`;
+    }).join('')}
+  </div>
+</section>
+
+<section id="journey">
+  <div class="sec-head"><div><h2>Along the purchase journey</h2><p>The same tests, arranged by what the customer does, plus the layers every step relies on. Click a card to filter the list.</p></div></div>
+  <div class="journey">
+    <div class="steps">${['quote', 'declare', 'pay'].map((id, i) => stageCard(stages[id], `Step ${i + 1}`)).join('<span class="arrow" aria-hidden="true">→</span>')}</div>
+    <div class="layers">${['lock', 'audit', 'platform'].map((id) => stageCard(stages[id], 'Underneath every step', true)).join('')}</div>
+  </div>
+</section>
+
+<section id="generated">
+  <div class="sec-head"><div><h2>Generated tests</h2><p>Instead of a handful of hand-picked examples, these state a rule and let fast-check invent the inputs, always including the tricky boundaries.</p></div></div>
+  <div class="gen-grid">
+    <div class="card gen-hero">
+      <div class="huge">≈ ${fmtInt(cases)}</div>
+      <p>random cases tried by <b>${generated.length}</b> generated tests in this run${DATA.fcOverride ? ` (FC_NUM_RUNS=${DATA.fcOverride})` : ''}.</p>
+      <div class="how">
+        <div class="step-line"><span class="n">1</span><span>A rule is written once, e.g. <i>“the database accepts exactly the legal transitions”</i>.</span></div>
+        <div class="step-line"><span class="n">2</span><span>fast-check generates inputs (ages, JSON bodies, operation sequences, clocks) and checks the rule on every one.</span></div>
+        <div class="step-line"><span class="n">3</span><span>If one breaks, it shrinks the failure to the smallest example and prints a seed to replay it.</span></div>
+      </div>
+      <pre class="cmd"><span class="c"># try harder, or replay a failure</span>
+FC_NUM_RUNS=5000 npm run test:report
+FC_SEED=&lt;seed&gt; npm test</pre>
+    </div>
+    <div class="card props">
+      ${(() => {
+        const byFile = files.map((f) => ({ f, g: f.tests.filter((t) => t.generated) })).filter((x) => x.g.length);
+        const max = Math.max(1, ...byFile.map((x) => x.g.reduce((a, t) => a + t.runs, 0)));
+        return byFile.sort((a, b) => b.g.reduce((s, t) => s + t.runs, 0) - a.g.reduce((s, t) => s + t.runs, 0)).map(({ f, g }) => {
+          const n = g.reduce((a, t) => a + t.runs, 0);
+          return `<div class="prop"><div class="name">${esc(niceName(f.path))} · ${g.length} rule${g.length > 1 ? 's' : ''}<small>${esc(f.suite.name)} · ${g[0].runs} cases each</small></div>
+            <div class="hbar"><i style="width:${(100 * n) / max}%"></i></div><div class="n">${fmtInt(n)}</div></div>`;
+        }).join('');
+      })()}
+    </div>
+  </div>
+</section>
+
+<section id="time">
+  <div class="sec-head"><div><h2>Where the time goes</h2><p>The ${Math.min(12, files.length)} slowest files. Database and HTTP tests cost more because every case hits PostgreSQL.</p></div></div>
+  <div class="card time">
+    ${(() => {
+      const top = [...files].sort((a, b) => b.durationMs - a.durationMs).slice(0, 12);
+      const max = Math.max(1, ...top.map((f) => f.durationMs));
+      return top.map((f) => `<div class="trow"><div class="f" title="${esc(f.path)}">${esc(niceName(f.path))}<small>${esc(f.suite.name)}</small></div>
+        <div class="hbar"><i class="${f.tests.some((t) => t.generated) ? 'gen' : ''}" style="width:${(100 * f.durationMs) / max}%"></i></div><div class="v">${fmtMs(f.durationMs)}</div></div>`).join('');
+    })()}
+  </div>
+</section>
+
+<section id="explorer">
+  <div class="sec-head"><div><h2>All ${fmtInt(tests.length)} tests</h2><p>Search by what a test checks, or filter by suite, result or kind.</p></div></div>
+  <div class="card">
+    <div class="toolbar">
+      <label class="search">${ICON.search}<input id="q" type="search" placeholder="Search, e.g. “expired”, “idempotency”, “age 45”" autocomplete="off"></label>
+      <div class="chips" id="f-status"></div>
+      <div class="chips" id="f-kind"></div>
+    </div>
+    <div class="toolbar" style="position:static;border-radius:0;padding-top:0"><div class="chips" id="f-suite"></div><div class="chips" id="f-stage"></div></div>
+    <div class="results-note"><span id="count"></span><span><button class="linkish" id="expand">Expand all</button> · <button class="linkish" id="clear">Clear filters</button></span></div>
+    <div id="list"></div>
+  </div>
+</section>
+
+<footer>
+  <span>Generated by <span class="mono">npm run test:report</span> · ${esc(when.toISOString())}</span>
+  <span>Open this file in any browser. No server needed.</span>
+</footer>`;
+
+function stageCard(st, kicker, layer = false) {
+  const list = st.tests;
+  const bad = list.filter((t) => t.status === 'failed').length;
+  const sample = list.filter((t) => !t.generated).slice(0, 2).concat(list.filter((t) => t.generated).slice(0, 1));
+  return `<button class="stage ${layer ? 'layer' : ''}" data-stage="${st.id}">
+    <span class="kicker">${kicker}</span><h3>${esc(st.name)}</h3>
+    <div class="nums"><b>${list.length}</b><span>tests · ${list.filter((t) => t.generated).length} generated${bad ? ` · <span style="color:var(--fail)">${bad} failed</span>` : ''}</span></div>
+    ${barHTML(list)}
+    <ul>${sample.map((t) => `<li>${iconFor(t)}<span>${esc(t.title)}</span></li>`).join('')}</ul>
+  </button>`;
+}
+
+/* ---------------------------------------------------------------- explorer */
+const state = { q: '', status: 'all', kind: 'all', suite: 'all', stage: 'all' };
+function chipRow(el, key, opts) {
+  el.innerHTML = opts.map(([v, label, n]) => `<button class="chip" data-k="${key}" data-v="${v}" aria-pressed="${state[key] === v}">${esc(label)}${n != null ? `<span class="c">${n}</span>` : ''}</button>`).join('');
+}
+function renderChips() {
+  chipRow($('#f-status'), 'status', [['all', 'All'], ['passed', 'Passed', passed], ['failed', 'Failed', failed], ...(skipped ? [['skipped', 'Skipped', skipped]] : [])]);
+  chipRow($('#f-kind'), 'kind', [['all', 'Any kind'], ['generated', 'Generated', generated.length], ['written', 'Hand-written', tests.length - generated.length]]);
+  chipRow($('#f-suite'), 'suite', [['all', 'All suites'], ...DATA.suites.map((s) => [s.id, s.name, tests.filter((t) => t.suite === s).length])]);
+  chipRow($('#f-stage'), 'stage', [['all', 'Any stage'], ...DATA.stages.map((st) => [st.id, st.name, stages[st.id].tests.length])]);
+}
+const hl = (text, q) => {
+  const e = esc(text);
+  if (!q) return e;
+  const i = text.toLowerCase().indexOf(q);
+  return i < 0 ? e : esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
+};
+function matches(t) {
+  if (state.status !== 'all' && t.status !== state.status) return false;
+  if (state.kind === 'generated' && !t.generated) return false;
+  if (state.kind === 'written' && t.generated) return false;
+  if (state.suite !== 'all' && t.suite.id !== state.suite) return false;
+  if (state.stage !== 'all' && t.stage !== state.stage) return false;
+  if (state.q) {
+    const hay = `${t.title} ${t.ancestors.join(' ')} ${t.file.path}`.toLowerCase();
+    if (!hay.includes(state.q)) return false;
+  }
+  return true;
+}
+let forceOpen = false;
+function renderList(highlightId) {
+  const filtering = state.q || state.status !== 'all' || state.kind !== 'all' || state.suite !== 'all' || state.stage !== 'all';
+  const shown = files.map((f) => ({ f, ts: f.tests.filter(matches) })).filter((x) => x.ts.length || (x.f.error && !filtering));
+  const count = shown.reduce((a, x) => a + x.ts.length, 0);
+  $('#count').textContent = `${fmtInt(count)} of ${fmtInt(tests.length)} tests in ${shown.length} file${shown.length === 1 ? '' : 's'}`;
+  if (!shown.length) { $('#list').innerHTML = '<div class="empty">No tests match. Try a different search or clear the filters.</div>'; return; }
+  $('#list').innerHTML = shown.map(({ f, ts }) => {
+    const bad = f.tests.filter((t) => t.status === 'failed').length;
+    const open = forceOpen || filtering || bad || f.error || ts.some((t) => t.id === highlightId);
+    return `<details class="file" ${open ? 'open' : ''} id="${f.id}">
+      <summary>${ICON.chev}<span class="fname"><b>${esc(niceName(f.path))}</b><small>${esc(f.path)}</small></span>
+        <span class="fstat"><span class="tag suite">${esc(f.suite.name)}</span>${f.tests.some((t) => t.generated) ? '<span class="tag gen">generated</span>' : ''}${bad || f.error ? `<span class="tag fail">${f.error ? 'did not run' : bad + ' failed'}</span>` : ''}<span>${f.tests.filter((t) => t.status === 'passed').length}/${f.tests.length}</span><span>${fmtMs(f.durationMs)}</span></span></summary>
+      ${f.error ? `<pre class="ferr" style="white-space:pre-wrap;background:var(--fail-soft);border-radius:10px;padding:10px 12px;font:12px/1.5 var(--mono)">${esc(f.error)}</pre>` : ''}
+      <div class="tests">${ts.map((t) => `<div class="test ${t.id === highlightId ? 'hit' : ''}" id="${t.id}">
+        ${iconFor(t)}<span class="ttl">${t.ancestors.length ? `<span class="anc">${hl(t.ancestors.join(' › '), state.q)}</span>` : ''}${hl(t.title, state.q)}</span>
+        <span class="right">${t.generated ? `<span class="tag gen">${fmtInt(t.runs)} cases</span>` : ''}<span>${fmtMs(t.durationMs)}</span></span>
+        ${t.failure ? `<pre>${esc(t.failure)}</pre>` : ''}</div>`).join('')}</div>
+    </details>`;
+  }).join('');
+}
+function setFilter(key, v) {
+  state[key] = v;
+  renderChips();
+  renderList();
+}
+renderChips();
+renderList();
+
+/* ---------------------------------------------------------------- events */
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (chip) return setFilter(chip.dataset.k, chip.dataset.v);
+  const suite = e.target.closest('[data-suite]');
+  if (suite) { setFilter('suite', suite.dataset.suite); return $('#explorer').scrollIntoView(); }
+  const stage = e.target.closest('[data-stage]');
+  if (stage) { setFilter('stage', stage.dataset.stage); return $('#explorer').scrollIntoView(); }
+  const go = e.target.closest('[data-goto]');
+  if (go) {
+    Object.assign(state, { q: '', status: 'all', kind: 'all', suite: 'all', stage: 'all' });
+    $('#q').value = '';
+    renderChips();
+    renderList(go.dataset.goto);
+    document.querySelectorAll('.cell.hit').forEach((c) => c.classList.remove('hit'));
+    document.querySelector(`.cell[data-goto="${go.dataset.goto}"]`)?.classList.add('hit');
+    document.getElementById(go.dataset.goto)?.scrollIntoView({ block: 'center' });
+    return;
+  }
+  if (e.target.id === 'expand') { forceOpen = !forceOpen; e.target.textContent = forceOpen ? 'Collapse all' : 'Expand all'; renderList(); }
+  if (e.target.id === 'clear') { Object.assign(state, { q: '', status: 'all', kind: 'all', suite: 'all', stage: 'all' }); $('#q').value = ''; renderChips(); renderList(); }
+});
+let qTimer;
+$('#q').addEventListener('input', (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => { state.q = e.target.value.trim().toLowerCase(); renderList(); }, 120); });
+
+// Tooltip for the mosaic
+const tip = $('#tip');
+const byId = Object.fromEntries(tests.map((t) => [t.id, t]));
+function showTip(el, x, y) {
+  const t = byId[el.dataset.tip];
+  if (!t) return;
+  tip.innerHTML = `<div><b>${t.status === 'passed' ? 'Passed' : t.status === 'failed' ? 'Failed' : 'Skipped'}</b>${t.generated ? ` · generated, ${fmtInt(t.runs)} cases` : ''} · ${fmtMs(t.durationMs)}</div>
+    <div style="margin-top:4px">${esc(t.title)}</div><div class="t-file">${esc(t.file.path)}</div>`;
+  tip.classList.add('on');
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(window.innerWidth - r.width - 12, Math.max(12, x + 14)) + 'px';
+  tip.style.top = (y + r.height + 24 > window.innerHeight ? y - r.height - 14 : y + 18) + 'px';
+}
+document.addEventListener('pointerover', (e) => { const c = e.target.closest('[data-tip]'); if (c) showTip(c, e.clientX, e.clientY); });
+document.addEventListener('pointermove', (e) => { const c = e.target.closest('[data-tip]'); if (c) showTip(c, e.clientX, e.clientY); else tip.classList.remove('on'); });
+document.addEventListener('focusin', (e) => { const c = e.target.closest('[data-tip]'); if (c) { const r = c.getBoundingClientRect(); showTip(c, r.left, r.bottom); } });
+document.addEventListener('focusout', () => tip.classList.remove('on'));
+</script>
+</body>
+</html>
