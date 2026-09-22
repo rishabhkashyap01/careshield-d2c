@@ -26,7 +26,23 @@ npm run api:dev                           # terminal 1 → http://localhost:4000
 npm run web:dev                           # terminal 2 → http://localhost:3000
 ```
 
-`npm test` runs every suite: the API's unit, database and end-to-end tests (they need the database running) and the website's countdown tests.
+### Tests
+
+219 tests in four suites. `npm test` runs them all, in about 45 s; the API suites need the database running.
+
+| Suite | Command | What it covers |
+| --- | --- | --- |
+| API unit | `npm run api:test` | Pricing, lock, state machine, eligibility, validation, webhooks (no database) |
+| Database | `npm run api:test:db` | CHECK constraints, triggers and the audit trail, run against real PostgreSQL |
+| API end-to-end | `npm run api:test:e2e` | The whole API over HTTP: checkout, idempotency, slow payments, outages |
+| Website | `npm run web:test` | Countdown maths |
+
+**Generated tests.** 42 of them are property-based, written with [fast-check](https://fast-check.dev) in files named `*.property.*`. Each one states a rule, such as "the total always equals base + loadings" or "the database accepts exactly the legal transitions, and the audit trail records exactly what happened". fast-check then invents the inputs: about 10,000 random cases per run, with the boundary values always included. When a rule breaks, it shrinks the failure to the smallest example that still fails and prints a seed so the failure can be replayed:
+
+```bash
+FC_NUM_RUNS=5000 npm test     # try harder: 5,000 cases per rule
+FC_SEED=<seed> npm test       # replay a failure, using the seed it printed
+```
 
 **Deploying:** see [DEPLOY.md](DEPLOY.md). It covers GitHub, Neon and two Vercel projects, one for the API and one for the website.
 
