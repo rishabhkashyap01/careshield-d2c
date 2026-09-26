@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareShield Test Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f5f4fb; --surface: #ffffff; --surface-2: #f0eefa; --surface-3: #e8e5f6;
+    --ink: #0c0a1d; --muted: #5d5a73; --faint: #8d89a5; --line: #e3e0ee;
+    --brand: #5f2bf5; --brand-soft: #ece7ff; --brand-ink: #3a17a8;
+    --pass: #0f9f6e; --pass-soft: #dcf6ea;
+    --gen: #7047ff; --gen-soft: #ebe5ff;
+    --fail: #d02f5a; --fail-soft: #fde6ec;
+    --skip: #a9a6ba;
+    --hero-a: #150838; --hero-b: #2a1270;
+    --shadow: 0 1px 2px rgb(16 12 48 / .04), 0 10px 30px -14px rgb(16 12 48 / .18);
+    --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0917; --surface: #141127; --surface-2: #1b1733; --surface-3: #241f42;
+      --ink: #eeecf8; --muted: #aaa6c6; --faint: #7c789a; --line: #2a2647;
+      --brand: #a491ff; --brand-soft: #251c52; --brand-ink: #d2c8ff;
+      --pass: #3ddc9f; --pass-soft: #0f2f24; --gen: #a491ff; --gen-soft: #221a4d;
+      --fail: #ff7898; --fail-soft: #3a1422; --skip: #5e5a7a;
+      --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 12px 30px -14px rgb(0 0 0 / .7);
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 20px 80px; }
+  h1, h2, h3 { margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+  p { margin: 0; }
+  button { font: inherit; color: inherit; }
+  .mono { font-family: var(--mono); }
+  .tabular { font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    border-radius: 28px; padding: clamp(24px, 4vw, 44px); color: #fff; position: relative; overflow: hidden;
+    background:
+      radial-gradient(800px 360px at 90% -20%, rgb(112 71 255 / .55), transparent 60%),
+      radial-gradient(500px 260px at -5% 120%, rgb(16 200 136 / .20), transparent 60%),
+      linear-gradient(160deg, var(--hero-a), var(--hero-b));
+    box-shadow: 0 24px 60px -28px rgb(40 20 120 / .55);
+  }
+  .hero.has-fail { background: radial-gradient(800px 360px at 90% -20%, rgb(255 90 130 / .45), transparent 60%), linear-gradient(160deg, #2a0816, #4a1230); }
+  .hero::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(to right, rgb(255 255 255 / .05) 1px, transparent 1px), linear-gradient(to bottom, rgb(255 255 255 / .05) 1px, transparent 1px);
+    background-size: 40px 40px; mask-image: radial-gradient(ellipse at 70% 0%, black 25%, transparent 70%); }
+  .hero > * { position: relative; z-index: 1; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font: 500 12.5px/1.4 var(--mono); color: rgb(255 255 255 / .62); }
+  .meta b { color: #fff; font-weight: 500; }
+  .hero-main { display: grid; grid-template-columns: auto 1fr; gap: clamp(20px, 4vw, 44px); align-items: center; margin-top: 26px; }
+  .ring-wrap { position: relative; width: clamp(150px, 20vw, 190px); aspect-ratio: 1; max-width: 100%; }
+  .ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .ring-center .big { font-size: clamp(38px, 5vw, 52px); font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+  .ring-center .small { font-size: 12.5px; color: rgb(255 255 255 / .7); margin-top: 6px; }
+  .verdict { font-size: clamp(28px, 4.2vw, 46px); font-weight: 700; line-height: 1.05; }
+  .verdict em { font-style: normal; background: linear-gradient(90deg, #c2b4ff, #3ddc9f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .has-fail .verdict em { background: linear-gradient(90deg, #ffb3c4, #ff7898); -webkit-background-clip: text; background-clip: text; }
+  .sub { color: rgb(255 255 255 / .75); margin-top: 10px; font-size: 16px; max-width: 62ch; }
+  .kpis { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+  .kpi { background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .14); border-radius: 14px; padding: 10px 14px; min-width: 120px; }
+  .kpi .v { font: 600 20px/1.2 var(--sans); font-variant-numeric: tabular-nums; }
+  .kpi .l { font-size: 12px; color: rgb(255 255 255 / .62); }
+  @media (max-width: 640px) { .hero-main { grid-template-columns: 1fr; justify-items: start; } }
+
+  /* ---------- sections ---------- */
+  section { margin-top: 44px; }
+  .sec-head { display: flex; justify-content: space-between; align-items: end; gap: 12px 20px; flex-wrap: wrap; margin-bottom: 16px; }
+  .sec-head h2 { font-size: clamp(21px, 2.6vw, 26px); }
+  .sec-head p { color: var(--muted); max-width: 70ch; margin-top: 4px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); }
+
+  /* suites */
+  .suites { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .suite { padding: 18px; display: grid; gap: 10px; align-content: start; text-align: left; cursor: pointer; border: 1px solid var(--line); background: var(--surface); border-radius: 20px; box-shadow: var(--shadow); transition: transform .15s, border-color .15s; }
+  .suite:hover { transform: translateY(-2px); border-color: var(--brand); }
+  .suite .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .suite h3 { font-size: 16px; }
+  .suite .count { font: 600 26px/1 var(--sans); font-variant-numeric: tabular-nums; }
+  .suite .count small { font-size: 14px; color: var(--faint); font-weight: 500; }
+  .suite .covers { color: var(--muted); font-size: 13.5px; }
+  .suite.bad { border-color: var(--fail); box-shadow: 0 0 0 3px var(--fail-soft), var(--shadow); }
+  .suite .warn { color: var(--fail); font-size: 13px; font-weight: 600; }
+  .suite .foot { display: flex; justify-content: space-between; gap: 8px; font: 12px/1.3 var(--mono); color: var(--faint); flex-wrap: wrap; }
+  .bar { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; display: flex; }
+  .bar i { display: block; height: 100%; }
+  .bar .p { background: var(--pass); } .bar .g { background: var(--gen); } .bar .f { background: var(--fail); } .bar .s { background: var(--skip); }
+
+  /* mosaic */
+  .mosaic { padding: 20px; display: grid; gap: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+  .mgroup { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: start; }
+  .mgroup .lbl { font-size: 13px; font-weight: 600; padding-top: 2px; }
+  .mgroup .lbl small { display: block; color: var(--faint); font: 500 12px/1.3 var(--mono); }
+  .cells { display: flex; flex-wrap: wrap; gap: 4px; }
+  .cellfile { display: flex; flex-wrap: wrap; gap: 4px; padding-right: 8px; margin-right: 4px; border-right: 1px dashed var(--line); }
+  .cellfile:last-child { border-right: 0; }
+  .cell { width: 16px; height: 16px; border-radius: 5px; border: 0; padding: 0; cursor: pointer; transition: transform .12s; }
+  .cell:hover, .cell:focus-visible { transform: scale(1.35); z-index: 2; }
+  .cell.passed { background: var(--pass); } .cell.gen { background: var(--gen); }
+  .cell.failed { background: var(--fail); box-shadow: 0 0 0 3px var(--fail-soft); } .cell.skipped { background: var(--skip); }
+  .cell.hit { outline: 2px solid var(--ink); outline-offset: 1px; }
+  @media (max-width: 640px) { .mgroup { grid-template-columns: 1fr; gap: 8px; } }
+  #tip { position: fixed; z-index: 50; pointer-events: none; max-width: 340px; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.4; box-shadow: 0 10px 30px rgb(0 0 0 / .3); opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s; }
+  #tip.on { opacity: 1; transform: none; }
+  #tip .t-file { font: 11.5px/1.3 var(--mono); opacity: .7; margin-top: 4px; overflow-wrap: anywhere; }
+
+  /* journey */
+  .journey { display: grid; gap: 14px; }
+  .steps { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 10px; align-items: stretch; }
+  .arrow { align-self: center; color: var(--faint); font-size: 22px; }
+  .stage { padding: 18px; display: grid; gap: 10px; align-content: start; cursor: pointer; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 20px; box-shadow: var(--shadow); transition: border-color .15s, transform .15s; }
+  .stage:hover { border-color: var(--brand); transform: translateY(-2px); }
+  .stage .kicker { font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+  .stage h3 { font-size: 17px; }
+  .stage .nums { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  .stage .nums b { font: 600 24px/1 var(--sans); font-variant-numeric: tabular-nums; }
+  .stage .nums span { font-size: 13px; color: var(--muted); }
+  .stage ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+  .stage li { font-size: 13px; color: var(--muted); display: grid; grid-template-columns: 14px 1fr; gap: 6px; }
+  .stage li svg { margin-top: 3px; }
+  .layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .layer { border-style: dashed; }
+  .layer .kicker { color: var(--brand); }
+  @media (max-width: 860px) { .steps { grid-template-columns: 1fr; } .arrow { transform: rotate(90deg); justify-self: center; } .layers { grid-template-columns: 1fr; } }
+
+  /* generated */
+  .gen-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 14px; }
+  @media (max-width: 860px) { .gen-grid { grid-template-columns: 1fr; } }
+  .gen-hero { padding: 22px; display: grid; gap: 14px; align-content: start; background: linear-gradient(160deg, var(--gen-soft), var(--surface)); }
+  .gen-hero .huge { font: 700 clamp(40px, 5vw, 56px)/1 var(--sans); letter-spacing: -.03em; color: var(--gen); font-variant-numeric: tabular-nums; }
+  .gen-hero p { color: var(--muted); }
+  .gen-hero .how { display: grid; gap: 8px; }
+  .step-line { display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 14px; }
+  .step-line .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--gen); color: #fff; font-size: 12px; font-weight: 600; }
+  pre.cmd { margin: 0; background: var(--hero-a); color: #e7e4f7; border-radius: 12px; padding: 12px 14px; font: 12.5px/1.6 var(--mono); overflow-x: auto; }
+  pre.cmd .c { color: #8e89b0; }
+  .props { padding: 8px 6px; }
+  .prop { display: grid; grid-template-columns: minmax(0, 1fr) 150px 64px; gap: 12px; align-items: center; padding: 9px 14px; border-radius: 12px; }
+  .prop:hover { background: var(--surface-2); }
+  .prop .name { font-size: 13.5px; min-width: 0; }
+  .prop .name small { display: block; color: var(--faint); font: 11.5px/1.3 var(--mono); overflow-wrap: anywhere; }
+  .prop .n { text-align: right; font: 500 13px var(--mono); font-variant-numeric: tabular-nums; }
+  .hbar { height: 8px; background: var(--surface-3); border-radius: 99px; overflow: hidden; }
+  .hbar i { display: block; height: 100%; background: var(--gen); border-radius: 99px; }
+  @media (max-width: 560px) { .prop { grid-template-columns: 1fr 56px; } .prop .hbar { grid-column: 1 / -1; grid-row: 2; } }
+
+  /* time */
+  .time { padding: 18px 20px; display: grid; gap: 10px; }
+  .trow { display: grid; grid-template-columns: minmax(0, 260px) 1fr 70px; gap: 14px; align-items: center; font-size: 13.5px; }
+  .trow .f { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trow .f small { color: var(--faint); font-family: var(--mono); font-size: 11.5px; margin-left: 6px; }
+  .trow .v { text-align: right; font: 500 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .trow .hbar i { background: var(--brand); }
+  .trow .hbar i.gen { background: var(--gen); }
+  @media (max-width: 560px) { .trow { grid-template-columns: 1fr 60px; } .trow .hbar { grid-column: 1 / -1; grid-row: 2; } }
+
+  /* explorer */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 14px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 5; border-radius: 20px 20px 0 0; }
+  .search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; min-width: 0; }
+  .search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; padding: 10px 0; outline: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip .c { opacity: .6; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .results-note { padding: 10px 16px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .linkish { border: 0; background: none; color: var(--brand); cursor: pointer; padding: 0; font-size: 13px; }
+  details.file { border-bottom: 1px solid var(--line); }
+  details.file:last-child { border-bottom: 0; }
+  details.file > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 16px; }
+  details.file > summary::-webkit-details-marker { display: none; }
+  details.file > summary:hover { background: var(--surface-2); }
+  .chev { transition: transform .15s; color: var(--faint); }
+  details[open] > summary .chev { transform: rotate(90deg); }
+  .fname { min-width: 0; }
+  .fname b { font-weight: 600; font-size: 14px; }
+  .fname small { display: block; font: 11.5px/1.3 var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+  .fstat { display: flex; gap: 8px; align-items: center; font: 12px var(--mono); color: var(--muted); white-space: nowrap; }
+  .tag { font: 600 11px/1 var(--sans); letter-spacing: .02em; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+  .tag.suite { background: var(--surface-3); color: var(--muted); }
+  .tag.gen { background: var(--gen-soft); color: var(--gen); }
+  .tag.fail { background: var(--fail-soft); color: var(--fail); }
+  .tests { padding: 0 8px 10px 36px; display: grid; }
+  .test { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 7px 8px; border-radius: 10px; }
+  .test:hover { background: var(--surface-2); }
+  .test.hit { background: var(--brand-soft); }
+  .test .ttl { font-size: 13.5px; min-width: 0; overflow-wrap: anywhere; }
+  .test .anc { display: block; font-size: 12px; color: var(--faint); }
+  .test .right { display: flex; gap: 8px; align-items: center; font: 12px var(--mono); color: var(--faint); white-space: nowrap; }
+  .test pre { grid-column: 2 / -1; margin: 6px 0 2px; white-space: pre-wrap; background: var(--fail-soft); color: var(--ink); border-radius: 10px; padding: 10px 12px; font: 12px/1.5 var(--mono); max-height: 260px; overflow: auto; }
+  .ferr { margin: 0 16px 14px 44px; }
+  .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+  mark { background: color-mix(in srgb, var(--brand) 22%, transparent); color: inherit; border-radius: 3px; }
+
+  /* failures */
+  .fails { border-color: var(--fail); }
+  .fails .fitem { padding: 14px 18px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+  .fails .fitem:last-child { border-bottom: 0; }
+  .fails pre { margin: 0; white-space: pre-wrap; background: var(--fail-soft); border-radius: 10px; padding: 10px 12px; font: 12px/1.5 var(--mono); max-height: 260px; overflow: auto; }
+
+  footer { margin-top: 48px; color: var(--faint); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line); padding-top: 18px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const DATA = {"generatedAt":"2026-09-22T14:18:34.458Z","startedAt":"2026-09-22T14:17:48.281Z","wallMs":46178,"fcOverride":null,"git":{"commit":"c66c263","subject":"test: visual HTML test report (npm run test:report)","branch":"main","dirty":false},"env":{"node":"v22.22.2","platform":"linux x64"},"stages":[{"id":"quote","name":"Get a quote"},{"id":"declare","name":"Health declaration"},{"id":"pay","name":"Pay"},{"id":"lock","name":"Price lock & countdown"},{"id":"audit","name":"State machine & audit trail"},{"id":"platform","name":"Validation & reliability"}],"suites":[{"id":"unit","name":"API unit","command":"npm run api:test","covers":"Pricing, the 15-minute lock, state machine, eligibility, validation, webhooks — pure logic, no database.","files":[{"path":"apps/api/src/common/database-unavailable.filter.spec.ts","stage":"platform","durationMs":5,"tests":[{"title":"true for P1001 cannot reach server","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":1.9,"failure":null,"generated":false,"runs":0},{"title":"true for P1002 server timed out","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"true for P1017 connection closed","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"true for P2024 pool timeout","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"true for raw query, driver says DatabaseNotReachable","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"true for initialization error","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"true for pg connect timeout","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"true for connection refused","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.3,"failure":null,"generated":false,"runs":0},{"title":"false for unique violation P2002","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.7,"failure":null,"generated":false,"runs":0},{"title":"false for record not found P2025","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"false for raw query failure with a different cause","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"false for Nest NotFoundException","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.1,"failure":null,"generated":false,"runs":0},{"title":"false for domain error","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.1,"failure":null,"generated":false,"runs":0},{"title":"false for ordinary bug","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.1,"failure":null,"generated":false,"runs":0},{"title":"false for non-error value","ancestors":["isDatabaseUnavailable"],"status":"passed","durationMs":0.1,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/src/common/request-validation.property.spec.ts","stage":"platform","durationMs":181,"tests":[{"title":"accepts a body exactly when age is a whole number 18–99, the flag is a real boolean, and nothing else is sent","ancestors":["POST /insurance/quote body (generated)"],"status":"passed","durationMs":66.2,"failure":null,"generated":true,"runs":100},{"title":"never accepts a string, even one that looks like a valid age","ancestors":["POST /insurance/quote body (generated)"],"status":"passed","durationMs":24.5,"failure":null,"generated":true,"runs":100},{"title":"accepts exactly six real booleans plus confirmsAccuracy === true, and nothing else","ancestors":["POST /insurance/quote/:id/medical-declaration body (generated)"],"status":"passed","durationMs":58.8,"failure":null,"generated":true,"runs":100},{"title":"accepts exactly a v4 quote id and a known payment token — never a client-chosen amount","ancestors":["POST /insurance/checkout body (generated)"],"status":"passed","durationMs":31.1,"failure":null,"generated":true,"runs":100}],"error":null},{"path":"apps/api/src/health/health.controller.spec.ts","stage":"platform","durationMs":107,"tests":[{"title":"live never touches the database","ancestors":["HealthController"],"status":"passed","durationMs":2.8,"failure":null,"generated":false,"runs":0},{"title":"ready → 200 up when SELECT 1 succeeds","ancestors":["HealthController"],"status":"passed","durationMs":1.9,"failure":null,"generated":false,"runs":0},{"title":"ready → 503 down when the query fails","ancestors":["HealthController"],"status":"passed","durationMs":0.6,"failure":null,"generated":false,"runs":0},{"title":"ready → 503 timeout (instead of hanging) when the query never returns","ancestors":["HealthController"],"status":"passed","durationMs":101.7,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/src/insurance/checkout/webhook-and-response.property.spec.ts","stage":"pay","durationMs":151,"tests":[{"title":"a body signed with the secret always verifies within the time window","ancestors":["webhook signatures (generated)"],"status":"passed","durationMs":27.2,"failure":null,"generated":true,"runs":100},{"title":"any change to the body, however small, fails verification","ancestors":["webhook signatures (generated)"],"status":"passed","durationMs":14,"failure":null,"generated":true,"runs":100},{"title":"a different secret never verifies","ancestors":["webhook signatures (generated)"],"status":"passed","durationMs":13.1,"failure":null,"generated":true,"runs":100},{"title":"events outside the ±5 minute window are refused (no replaying old events)","ancestors":["webhook signatures (generated)"],"status":"passed","durationMs":6.2,"failure":null,"generated":true,"runs":100},{"title":"garbage headers are refused without throwing","ancestors":["webhook signatures (generated)"],"status":"passed","durationMs":21.2,"failure":null,"generated":true,"runs":100},{"title":"is stable for the same request and differs for different ones","ancestors":["idempotency request hash (generated)"],"status":"passed","durationMs":14,"failure":null,"generated":true,"runs":100},{"title":"remainingMs is the server-measured time left: never negative, never over 15 minutes, 0 exactly when expired or at the deadline","ancestors":["quote response (generated)"],"status":"passed","durationMs":17.8,"failure":null,"generated":true,"runs":100},{"title":"money is always a 2-decimal string that adds up, and dates are ISO","ancestors":["quote response (generated)"],"status":"passed","durationMs":29.4,"failure":null,"generated":true,"runs":100},{"title":"policy responses carry the paid amount as a 2-decimal string and a 1-year cover window","ancestors":["quote response (generated)"],"status":"passed","durationMs":8.5,"failure":null,"generated":true,"runs":100}],"error":null},{"path":"apps/api/src/insurance/domain/eligibility.spec.ts","stage":"declare","durationMs":5,"tests":[{"title":"accepts a clean declaration","ancestors":["evaluateEligibility"],"status":"passed","durationMs":2.3,"failure":null,"generated":false,"runs":0},{"title":"accepts declared conditions when the quote was priced for them","ancestors":["evaluateEligibility"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"rejects hasDiabetes when the quote said no pre-existing conditions","ancestors":["evaluateEligibility"],"status":"passed","durationMs":0.5,"failure":null,"generated":false,"runs":0},{"title":"rejects hasHypertension when the quote said no pre-existing conditions","ancestors":["evaluateEligibility"],"status":"passed","durationMs":0.3,"failure":null,"generated":false,"runs":0},{"title":"rejects hasHeartDisease when the quote said no pre-existing conditions","ancestors":["evaluateEligibility"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"smoking and past surgery alone do not change eligibility","ancestors":["evaluateEligibility"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"terminal illness is a knock-out, and reasons accumulate","ancestors":["evaluateEligibility"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/src/insurance/domain/premium-calculator.spec.ts","stage":"quote","durationMs":8,"tests":[{"title":"age 30, preExisting=false → ageLoading 0.00, conditionLoading 0.00, total 10000.00","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":3.2,"failure":null,"generated":false,"runs":0},{"title":"age 30, preExisting=true → ageLoading 0.00, conditionLoading 5000.00, total 15000.00","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.5,"failure":null,"generated":false,"runs":0},{"title":"age 45, preExisting=false → ageLoading 0.00, conditionLoading 0.00, total 10000.00","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"age 45, preExisting=true → ageLoading 0.00, conditionLoading 5000.00, total 15000.00","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"age 46, preExisting=false → ageLoading 5000.00, conditionLoading 0.00, total 15000.00","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"age 46, preExisting=true → ageLoading 5000.00, conditionLoading 5000.00, total 20000.00","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"age 18, preExisting=false → ageLoading 0.00, conditionLoading 0.00, total 10000.00","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"age 99, preExisting=true → ageLoading 5000.00, conditionLoading 5000.00, total 20000.00","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"returns Decimals (never floats) with 2 dp, total = sum of parts","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":1.5,"failure":null,"generated":false,"runs":0},{"title":"is deterministic","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"rejects invalid age -1","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.6,"failure":null,"generated":false,"runs":0},{"title":"rejects invalid age 30.5","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.1,"failure":null,"generated":false,"runs":0},{"title":"rejects invalid age NaN","ancestors":["calculatePremium (Task 2.2)"],"status":"passed","durationMs":0.1,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/src/insurance/domain/pricing-and-lock.property.spec.ts","stage":"quote","durationMs":114,"tests":[{"title":"matches the brief for every applicant: ₹10,000 base, +50% over 45, +₹5,000 for conditions","ancestors":["premium calculation (generated)"],"status":"passed","durationMs":20,"failure":null,"generated":true,"runs":100},{"title":"total always equals base + loadings, exactly (the same rule the DB CHECK enforces)","ancestors":["premium calculation (generated)"],"status":"passed","durationMs":4.2,"failure":null,"generated":true,"runs":100},{"title":"every amount fits NUMERIC(10,2): 2 decimals, non-negative, below 10^8","ancestors":["premium calculation (generated)"],"status":"passed","durationMs":28.8,"failure":null,"generated":true,"runs":100},{"title":"is deterministic: the same applicant always gets the same price","ancestors":["premium calculation (generated)"],"status":"passed","durationMs":22,"failure":null,"generated":true,"runs":100},{"title":"never gets cheaper as the applicant gets older, or when conditions are added","ancestors":["premium calculation (generated)"],"status":"passed","durationMs":9.2,"failure":null,"generated":true,"runs":100},{"title":"only ever produces one of the three possible prices","ancestors":["premium calculation (generated)"],"status":"passed","durationMs":9,"failure":null,"generated":true,"runs":100},{"title":"refuses any age that is not a non-negative whole number","ancestors":["premium calculation (generated)"],"status":"passed","durationMs":8.3,"failure":null,"generated":true,"runs":100},{"title":"uses the published constants","ancestors":["premium calculation (generated)"],"status":"passed","durationMs":0.6,"failure":null,"generated":false,"runs":0},{"title":"expires exactly 15 minutes after any creation time, to the millisecond","ancestors":["15-minute quote lock (generated)"],"status":"passed","durationMs":4.2,"failure":null,"generated":true,"runs":100},{"title":"is valid up to and including expires_at, and expired from 1 ms after","ancestors":["15-minute quote lock (generated)"],"status":"passed","durationMs":3.4,"failure":null,"generated":true,"runs":100},{"title":"once expired, stays expired as time moves on","ancestors":["15-minute quote lock (generated)"],"status":"passed","durationMs":4.2,"failure":null,"generated":true,"runs":100}],"error":null},{"path":"apps/api/src/insurance/domain/quote-state-machine.spec.ts","stage":"audit","durationMs":8,"tests":[{"title":"allows QUOTE_GENERATED -> MEDICAL_DECLARED","ancestors":["quote state machine"],"status":"passed","durationMs":2.8,"failure":null,"generated":false,"runs":0},{"title":"allows MEDICAL_DECLARED -> PENDING_PAYMENT","ancestors":["quote state machine"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"allows PENDING_PAYMENT -> PREMIUM_PAID","ancestors":["quote state machine"],"status":"passed","durationMs":0.3,"failure":null,"generated":false,"runs":0},{"title":"allows PENDING_PAYMENT -> MEDICAL_DECLARED","ancestors":["quote state machine"],"status":"passed","durationMs":0.3,"failure":null,"generated":false,"runs":0},{"title":"allows PREMIUM_PAID -> POLICY_ISSUED","ancestors":["quote state machine"],"status":"passed","durationMs":0.3,"failure":null,"generated":false,"runs":0},{"title":"rejects every other transition (skips, reversals, self-loops)","ancestors":["quote state machine"],"status":"passed","durationMs":1.8,"failure":null,"generated":false,"runs":0},{"title":"only declaring and STARTING a payment are guarded by the quote lock","ancestors":["quote state machine"],"status":"passed","durationMs":1.1,"failure":null,"generated":false,"runs":0},{"title":"expires exactly 15 minutes after creation","ancestors":["quote lock"],"status":"passed","durationMs":0.8,"failure":null,"generated":false,"runs":0},{"title":"is valid up to and including expires_at, expired 1ms after","ancestors":["quote lock"],"status":"passed","durationMs":0.6,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/src/insurance/domain/state-machine-and-eligibility.property.spec.ts","stage":"declare","durationMs":48,"tests":[{"title":"allows exactly the transitions in the spec, for every pair of states","ancestors":["quote state machine (generated)"],"status":"passed","durationMs":13.9,"failure":null,"generated":true,"runs":100},{"title":"on any random walk: never skips payment, never leaves POLICY_ISSUED, never returns to QUOTE_GENERATED","ancestors":["quote state machine (generated)"],"status":"passed","durationMs":6,"failure":null,"generated":true,"runs":100},{"title":"POLICY_ISSUED is reachable from every non-final state, and is the only final state","ancestors":["quote state machine (generated)"],"status":"passed","durationMs":4.8,"failure":null,"generated":true,"runs":100},{"title":"the 15-minute lock guards exactly: declaring, and starting a payment","ancestors":["quote state machine (generated)"],"status":"passed","durationMs":2.4,"failure":null,"generated":true,"runs":100},{"title":"is eligible exactly when there is no terminal illness and no condition the price missed","ancestors":["eligibility (generated)"],"status":"passed","durationMs":5.3,"failure":null,"generated":true,"runs":100},{"title":"gives one reason per problem, each with a message, and never duplicates","ancestors":["eligibility (generated)"],"status":"passed","durationMs":10.5,"failure":null,"generated":true,"runs":100},{"title":"smoking and past surgery never change eligibility on their own","ancestors":["eligibility (generated)"],"status":"passed","durationMs":5.3,"failure":null,"generated":true,"runs":100}],"error":null},{"path":"apps/api/src/insurance/dto/quote-response.dto.spec.ts","stage":"quote","durationMs":5,"tests":[{"title":"reports the remaining lock in ms, measured on the server clock","ancestors":["toQuoteResponse — server-computed lock time"],"status":"passed","durationMs":3.4,"failure":null,"generated":false,"runs":0},{"title":"reports the full 15 minutes for a brand-new quote","ancestors":["toQuoteResponse — server-computed lock time"],"status":"passed","durationMs":0.4,"failure":null,"generated":false,"runs":0},{"title":"never reports negative time once the lock has passed","ancestors":["toQuoteResponse — server-computed lock time"],"status":"passed","durationMs":0.5,"failure":null,"generated":false,"runs":0},{"title":"reports 0 but not expired at the exact deadline (expiry is strictly after)","ancestors":["toQuoteResponse — server-computed lock time"],"status":"passed","durationMs":0.3,"failure":null,"generated":false,"runs":0}],"error":null}],"wallMs":7013,"error":null},{"id":"db","name":"Database","command":"npm run api:test:db","covers":"CHECK constraints, triggers and the audit trail, run against a real PostgreSQL.","files":[{"path":"apps/api/test/db/lifecycle.property.int-spec.ts","stage":"audit","durationMs":4849,"tests":[{"title":"the database accepts exactly what the rules allow, and the audit trail records exactly what happened","ancestors":["quote lifecycle vs. an independent model (generated, real PostgreSQL)"],"status":"passed","durationMs":3867.4,"failure":null,"generated":true,"runs":40},{"title":"the 15-minute lock: for any time left and any change, only declaring and starting a payment are blocked after expiry","ancestors":["quote lifecycle vs. an independent model (generated, real PostgreSQL)"],"status":"passed","durationMs":982,"failure":null,"generated":true,"runs":40}],"error":null},{"path":"apps/api/test/db/schema.int-spec.ts","stage":"audit","durationMs":4420,"tests":[{"title":"stores money exactly, with no floating-point drift","ancestors":["Task 1.2 — financial precision (NUMERIC(10,2))"],"status":"passed","durationMs":104.2,"failure":null,"generated":false,"runs":0},{"title":"uses numeric(10,2) columns for every money field","ancestors":["Task 1.2 — financial precision (NUMERIC(10,2))"],"status":"passed","durationMs":21.3,"failure":null,"generated":false,"runs":0},{"title":"rejects values that overflow NUMERIC(10,2)","ancestors":["Task 1.2 — financial precision (NUMERIC(10,2))"],"status":"passed","durationMs":28.3,"failure":null,"generated":false,"runs":0},{"title":"rejects a total that does not equal base + loadings","ancestors":["Task 1.2 — financial precision (NUMERIC(10,2))"],"status":"passed","durationMs":30,"failure":null,"generated":false,"runs":0},{"title":"tracks created_at and expires_at 15 minutes apart","ancestors":["Task 1.2 — financial precision (NUMERIC(10,2))"],"status":"passed","durationMs":36.2,"failure":null,"generated":false,"runs":0},{"title":"runs the full lifecycle and links the policy","ancestors":["Task 1.1 — quote state machine"],"status":"passed","durationMs":81,"failure":null,"generated":false,"runs":0},{"title":"new quotes must start in QUOTE_GENERATED","ancestors":["Task 1.1 — quote state machine"],"status":"passed","durationMs":14.3,"failure":null,"generated":false,"runs":0},{"title":"app layer refuses to skip a step","ancestors":["Task 1.1 — quote state machine"],"status":"passed","durationMs":42.3,"failure":null,"generated":false,"runs":0},{"title":"DB trigger refuses skips and reversals even via raw SQL","ancestors":["Task 1.1 — quote state machine"],"status":"passed","durationMs":45.6,"failure":null,"generated":false,"runs":0},{"title":"requires a medical declaration before leaving QUOTE_GENERATED","ancestors":["Task 1.1 — quote state machine"],"status":"passed","durationMs":30.8,"failure":null,"generated":false,"runs":0},{"title":"stale \"from\" state loses (compare-and-set)","ancestors":["Task 1.1 — quote state machine"],"status":"passed","durationMs":34.7,"failure":null,"generated":false,"runs":0},{"title":"only one of two concurrent transitions wins","ancestors":["Task 1.1 — quote state machine"],"status":"passed","durationMs":28.5,"failure":null,"generated":false,"runs":0},{"title":"cannot be POLICY_ISSUED without a policy row","ancestors":["Task 1.1 — quote state machine"],"status":"passed","durationMs":24.7,"failure":null,"generated":false,"runs":0},{"title":"app layer rejects declaring on an expired quote","ancestors":["Quote lock (15 minutes)"],"status":"passed","durationMs":16.6,"failure":null,"generated":false,"runs":0},{"title":"DB trigger rejects it too, even via raw SQL","ancestors":["Quote lock (15 minutes)"],"status":"passed","durationMs":13.1,"failure":null,"generated":false,"runs":0},{"title":"pricing and expiry are immutable once quoted","ancestors":["Quote lock (15 minutes)"],"status":"passed","durationMs":58.3,"failure":null,"generated":false,"runs":0},{"title":"can only be created from a PREMIUM_PAID quote","ancestors":["policies"],"status":"passed","durationMs":26.4,"failure":null,"generated":false,"runs":0},{"title":"must match the quoted premium exactly","ancestors":["policies"],"status":"passed","durationMs":35.4,"failure":null,"generated":false,"runs":0},{"title":"one quote → at most one policy; one payment → at most one policy","ancestors":["policies"],"status":"passed","durationMs":67.8,"failure":null,"generated":false,"runs":0},{"title":"a quote with a policy cannot be deleted","ancestors":["policies"],"status":"passed","durationMs":41.3,"failure":null,"generated":false,"runs":0},{"title":"rolls back the policy insert if issuing fails mid-transaction","ancestors":["policies"],"status":"passed","durationMs":45.3,"failure":null,"generated":false,"runs":0},{"title":"records every status change as a sequential row, starting at creation","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":31.3,"failure":null,"generated":false,"runs":0},{"title":"records the application context, and the database adds dbUser and txid itself","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":15.5,"failure":null,"generated":false,"runs":0},{"title":"still records changes made without context (manual SQL), as source \"database\"","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":17,"failure":null,"generated":false,"runs":0},{"title":"does not leak context to the next transaction on the same pool","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":18.4,"failure":null,"generated":false,"runs":0},{"title":"never loses a status change because of bad context","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":13.9,"failure":null,"generated":false,"runs":0},{"title":"leaves no row for a transition that was rolled back or refused","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":35.2,"failure":null,"generated":false,"runs":0},{"title":"does not log updates that leave the status unchanged","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":25.8,"failure":null,"generated":false,"runs":0},{"title":"is append-only: rows cannot be updated or deleted, and audited quotes cannot be deleted","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":75.1,"failure":null,"generated":false,"runs":0},{"title":"gives concurrent changes to one quote distinct, gap-free sequence numbers","ancestors":["State-machine audit trail (quote_status_transitions)"],"status":"passed","durationMs":59.3,"failure":null,"generated":false,"runs":0},{"title":"a payment started before expiry can still settle after it (the clock is frozen)","ancestors":["Payment in flight (PENDING_PAYMENT)"],"status":"passed","durationMs":1336.1,"failure":null,"generated":false,"runs":0},{"title":"a payment cannot be STARTED after expiry — in the app or via raw SQL","ancestors":["Payment in flight (PENDING_PAYMENT)"],"status":"passed","durationMs":525.2,"failure":null,"generated":false,"runs":0},{"title":"a failed payment returns the quote to MEDICAL_DECLARED, even after expiry, and must clear the attempt","ancestors":["Payment in flight (PENDING_PAYMENT)"],"status":"passed","durationMs":1349.6,"failure":null,"generated":false,"runs":0},{"title":"a pending payment must name its attempt, which cannot be swapped or dropped","ancestors":["Payment in flight (PENDING_PAYMENT)"],"status":"passed","durationMs":47.9,"failure":null,"generated":false,"runs":0},{"title":"new quotes cannot carry a payment attempt, and nothing skips PENDING_PAYMENT","ancestors":["Payment in flight (PENDING_PAYMENT)"],"status":"passed","durationMs":43.8,"failure":null,"generated":false,"runs":0}],"error":null}],"wallMs":11873,"error":null},{"id":"e2e","name":"API end-to-end","command":"npm run api:test:e2e","covers":"The whole API over HTTP: quotes, declarations, checkout, idempotency, slow payments, outages.","files":[{"path":"apps/api/test/audit-trail.e2e-spec.ts","stage":"audit","durationMs":439,"tests":[{"title":"records the whole journey with the action, request and payment details","ancestors":["Quote status audit trail (e2e)"],"status":"passed","durationMs":209.3,"failure":null,"generated":false,"runs":0},{"title":"uses a well-formed incoming X-Request-Id, and replaces a malformed one","ancestors":["Quote status audit trail (e2e)"],"status":"passed","durationMs":27.7,"failure":null,"generated":false,"runs":0},{"title":"records a declined payment as a round trip, and nothing for requests that change nothing","ancestors":["Quote status audit trail (e2e)"],"status":"passed","durationMs":201.5,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/test/checkout.e2e-spec.ts","stage":"pay","durationMs":2337,"tests":[{"title":"charges once, issues the policy and advances the quote to POLICY_ISSUED","ancestors":["POST /api/v1/insurance/checkout (e2e)","happy path"],"status":"passed","durationMs":250.9,"failure":null,"generated":false,"runs":0},{"title":"issues sequential, unique policy numbers","ancestors":["POST /api/v1/insurance/checkout (e2e)","happy path"],"status":"passed","durationMs":211.1,"failure":null,"generated":false,"runs":0},{"title":"replays the stored response for a repeated key — no second charge, no second policy","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.2 — idempotency"],"status":"passed","durationMs":171.2,"failure":null,"generated":false,"runs":0},{"title":"rapid repeated clicks with ONE key → one charge, one policy","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.2 — idempotency"],"status":"passed","durationMs":485.9,"failure":null,"generated":false,"runs":0},{"title":"two tabs with DIFFERENT keys for the same quote → one charge, the others get 409","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.2 — idempotency"],"status":"passed","durationMs":382.3,"failure":null,"generated":false,"runs":0},{"title":"a key stuck IN_PROGRESS (e.g. DB dropped mid-checkout) is reclaimed once stale","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.2 — idempotency"],"status":"passed","durationMs":131.1,"failure":null,"generated":false,"runs":0},{"title":"rejects reusing a key for a different request (422)","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.2 — idempotency"],"status":"passed","durationMs":137.9,"failure":null,"generated":false,"runs":0},{"title":"rejects a missing Idempotency-Key header (400)","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.2 — idempotency"],"status":"passed","durationMs":37.9,"failure":null,"generated":false,"runs":0},{"title":"rejects a too short Idempotency-Key header (400)","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.2 — idempotency"],"status":"passed","durationMs":33.2,"failure":null,"generated":false,"runs":0},{"title":"rejects a bad characters Idempotency-Key header (400)","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.2 — idempotency"],"status":"passed","durationMs":35.4,"failure":null,"generated":false,"runs":0},{"title":"a crash after the policy INSERT rolls the settlement back; the customer sees \"processing\" and a retry with the same key completes without a second charge","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.1 — atomic transaction & rollback"],"status":"passed","durationMs":151.5,"failure":null,"generated":false,"runs":0},{"title":"a declined card changes nothing (402) and the customer can pay with another method","ancestors":["POST /api/v1/insurance/checkout (e2e)","Task 4.1 — atomic transaction & rollback"],"status":"passed","durationMs":180.2,"failure":null,"generated":false,"runs":0},{"title":"an expired quote cannot be paid (410) and nobody is charged","ancestors":["POST /api/v1/insurance/checkout (e2e)","guards"],"status":"passed","durationMs":45.5,"failure":null,"generated":false,"runs":0},{"title":"requires the medical declaration first (409)","ancestors":["POST /api/v1/insurance/checkout (e2e)","guards"],"status":"passed","durationMs":27.2,"failure":null,"generated":false,"runs":0},{"title":"unknown quote → 404","ancestors":["POST /api/v1/insurance/checkout (e2e)","guards"],"status":"passed","durationMs":16.8,"failure":null,"generated":false,"runs":0},{"title":"rejects unknown payment token (400)","ancestors":["POST /api/v1/insurance/checkout (e2e)","guards"],"status":"passed","durationMs":12.1,"failure":null,"generated":false,"runs":0},{"title":"rejects bad quote id (400)","ancestors":["POST /api/v1/insurance/checkout (e2e)","guards"],"status":"passed","durationMs":14.5,"failure":null,"generated":false,"runs":0},{"title":"rejects client-supplied amount (400)","ancestors":["POST /api/v1/insurance/checkout (e2e)","guards"],"status":"passed","durationMs":12.7,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/test/database-outage.e2e-spec.ts","stage":"platform","durationMs":1419,"tests":[{"title":"liveness stays 200 (the process is fine — do not restart it)","ancestors":["database unavailable — connection refused (e2e)"],"status":"passed","durationMs":23.3,"failure":null,"generated":false,"runs":0},{"title":"/api/v1/health/ready → 503 database down","ancestors":["database unavailable — connection refused (e2e)"],"status":"passed","durationMs":16.2,"failure":null,"generated":false,"runs":0},{"title":"/api/v1/health → 503 database down","ancestors":["database unavailable — connection refused (e2e)"],"status":"passed","durationMs":5.1,"failure":null,"generated":false,"runs":0},{"title":"a quote request → 503 ServiceUnavailable with Retry-After (not a bare 500)","ancestors":["database unavailable — connection refused (e2e)"],"status":"passed","durationMs":17.1,"failure":null,"generated":false,"runs":0},{"title":"checkout → 503 and nobody is charged","ancestors":["database unavailable — connection refused (e2e)"],"status":"passed","durationMs":39.3,"failure":null,"generated":false,"runs":0},{"title":"requests that never need the DB still behave normally (validation 400)","ancestors":["database unavailable — connection refused (e2e)"],"status":"passed","durationMs":4.9,"failure":null,"generated":false,"runs":0},{"title":"readiness answers 503 timeout within the health timeout instead of hanging","ancestors":["database unreachable — packets dropped (e2e)"],"status":"passed","durationMs":505.7,"failure":null,"generated":false,"runs":0},{"title":"a normal request fails fast with 503 once the connect timeout hits","ancestors":["database unreachable — packets dropped (e2e)"],"status":"passed","durationMs":807.6,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/test/health.e2e-spec.ts","stage":"platform","durationMs":70,"tests":[{"title":"GET /health/live → 200, not cached","ancestors":["health endpoints (e2e, database up)"],"status":"passed","durationMs":26.9,"failure":null,"generated":false,"runs":0},{"title":"GET /api/v1/health/ready → 200 up with latency","ancestors":["health endpoints (e2e, database up)"],"status":"passed","durationMs":37.2,"failure":null,"generated":false,"runs":0},{"title":"GET /api/v1/health → 200 up with latency","ancestors":["health endpoints (e2e, database up)"],"status":"passed","durationMs":5.5,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/test/journey.property.e2e-spec.ts","stage":"quote","durationMs":1264,"tests":[{"title":"POST /quote: any integer age gets 201 with the brief's price and a 15-minute lock if 18–99, otherwise a 400 on \"age\"","ancestors":["purchase journey over HTTP (generated)"],"status":"passed","durationMs":390.1,"failure":null,"generated":true,"runs":60},{"title":"POST /quote: any non-integer or wrongly-typed age is a 400, and nothing is stored","ancestors":["purchase journey over HTTP (generated)"],"status":"passed","durationMs":166.3,"failure":null,"generated":true,"runs":60},{"title":"medical declaration: for any answers, 200 → MEDICAL_DECLARED exactly when eligible, otherwise 422 with the right reasons and no change","ancestors":["purchase journey over HTTP (generated)"],"status":"passed","durationMs":707.1,"failure":null,"generated":true,"runs":60}],"error":null},{"path":"apps/api/test/medical-declaration.e2e-spec.ts","stage":"declare","durationMs":469,"tests":[{"title":"accepts a declaration and advances to MEDICAL_DECLARED","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":154.4,"failure":null,"generated":false,"runs":0},{"title":"cannot declare twice (409)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":41.8,"failure":null,"generated":false,"runs":0},{"title":"rejects an undeclared pre-existing condition (422) and leaves the quote alone","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":21.6,"failure":null,"generated":false,"runs":0},{"title":"allows the condition when the quote was priced for it","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":29.7,"failure":null,"generated":false,"runs":0},{"title":"terminal illness is not eligible (422)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":24.2,"failure":null,"generated":false,"runs":0},{"title":"an expired quote cannot be declared (410)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":18.9,"failure":null,"generated":false,"runs":0},{"title":"returns the lock time still left, computed by the server (remainingMs)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":20.1,"failure":null,"generated":false,"runs":0},{"title":"rejects missing confirmation (400)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":19.7,"failure":null,"generated":false,"runs":0},{"title":"rejects confirmation false (400)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":36,"failure":null,"generated":false,"runs":0},{"title":"rejects string boolean (400)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":47.1,"failure":null,"generated":false,"runs":0},{"title":"rejects missing answer (400)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":18.6,"failure":null,"generated":false,"runs":0},{"title":"rejects unknown field (400)","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":20.3,"failure":null,"generated":false,"runs":0},{"title":"unknown quote → 404","ancestors":["medical declaration (e2e)"],"status":"passed","durationMs":16.3,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/test/payment-lifecycle.e2e-spec.ts","stage":"pay","durationMs":9196,"tests":[{"title":"commits PENDING_PAYMENT first, holds no row lock and no connection in a transaction during the charge","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","risk 2 — no database transaction is open while the gateway works"],"status":"passed","durationMs":1706.6,"failure":null,"generated":false,"runs":0},{"title":"a payment started at \"14:59\" completes even though the gateway answers after expiry","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","risk 1 — the 15-minute expiry race"],"status":"passed","durationMs":2065,"failure":null,"generated":false,"runs":0},{"title":"but a payment cannot be STARTED after expiry (410, nobody charged)","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","risk 1 — the 15-minute expiry race"],"status":"passed","durationMs":351,"failure":null,"generated":false,"runs":0},{"title":"a decline that arrives after expiry returns the quote; it must then be recalculated","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","risk 1 — the 15-minute expiry race"],"status":"passed","durationMs":872.9,"failure":null,"generated":false,"runs":0},{"title":"answers 202 after the timeout, then the provider webhook settles it; the same key then replays the policy","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","slow gateway → 202 processing"],"status":"passed","durationMs":1131.5,"failure":null,"generated":false,"runs":0},{"title":"without any webhook, the status poll reconciles with the gateway","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","slow gateway → 202 processing"],"status":"passed","durationMs":776.6,"failure":null,"generated":false,"runs":0},{"title":"retrying with the same key while the charge is still running resumes it — one charge, one policy","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","slow gateway → 202 processing"],"status":"passed","durationMs":760.5,"failure":null,"generated":false,"runs":0},{"title":"another tab (different key) is told a payment is already in progress","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","slow gateway → 202 processing"],"status":"passed","durationMs":260.8,"failure":null,"generated":false,"runs":0},{"title":"settles on a valid signed event, and a duplicate delivery is harmless","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","webhook endpoint"],"status":"passed","durationMs":181.8,"failure":null,"generated":false,"runs":0},{"title":"a charge.failed event gives the quote back, and the status says why","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","webhook endpoint"],"status":"passed","durationMs":157.7,"failure":null,"generated":false,"runs":0},{"title":"refuses unsigned, wrongly signed and replayed-old events (401) and changes nothing","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","webhook endpoint"],"status":"passed","durationMs":145.2,"failure":null,"generated":false,"runs":0},{"title":"acknowledges but ignores a capture that does not belong to the pending attempt","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","webhook endpoint"],"status":"passed","durationMs":152.1,"failure":null,"generated":false,"runs":0},{"title":"rejects a malformed (but signed) event with 400","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","webhook endpoint"],"status":"passed","durationMs":14.5,"failure":null,"generated":false,"runs":0},{"title":"needs CRON_SECRET, and settles payments stuck in PENDING_PAYMENT","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","reconciliation job (GET /payments/reconcile)"],"status":"passed","durationMs":574.9,"failure":null,"generated":false,"runs":0},{"title":"gives the quote back when the gateway never received the payment (request died after step 1)","ancestors":["Payment lifecycle: PENDING_PAYMENT, webhooks, reconciliation (e2e)","reconciliation job (GET /payments/reconcile)"],"status":"passed","durationMs":44.7,"failure":null,"generated":false,"runs":0}],"error":null},{"path":"apps/api/test/quote.e2e-spec.ts","stage":"quote","durationMs":550,"tests":[{"title":"age 30, preExisting=false → total 0.00","ancestors":["POST /api/v1/insurance/quote (e2e)","pricing (Task 2.2)"],"status":"passed","durationMs":117.4,"failure":null,"generated":false,"runs":0},{"title":"age 30, preExisting=true → total 0.00","ancestors":["POST /api/v1/insurance/quote (e2e)","pricing (Task 2.2)"],"status":"passed","durationMs":23.2,"failure":null,"generated":false,"runs":0},{"title":"age 45, preExisting=false → total 0.00","ancestors":["POST /api/v1/insurance/quote (e2e)","pricing (Task 2.2)"],"status":"passed","durationMs":19.3,"failure":null,"generated":false,"runs":0},{"title":"age 46, preExisting=false → total 5000.00","ancestors":["POST /api/v1/insurance/quote (e2e)","pricing (Task 2.2)"],"status":"passed","durationMs":19.1,"failure":null,"generated":false,"runs":0},{"title":"age 60, preExisting=true → total 5000.00","ancestors":["POST /api/v1/insurance/quote (e2e)","pricing (Task 2.2)"],"status":"passed","durationMs":21,"failure":null,"generated":false,"runs":0},{"title":"saves the quote and locks it for exactly 15 minutes","ancestors":["POST /api/v1/insurance/quote (e2e)","persistence & quote lock (Task 2.3)"],"status":"passed","durationMs":34.2,"failure":null,"generated":false,"runs":0},{"title":"serialises money as strings, never floats","ancestors":["POST /api/v1/insurance/quote (e2e)","persistence & quote lock (Task 2.3)"],"status":"passed","durationMs":28.6,"failure":null,"generated":false,"runs":0},{"title":"rejects empty body","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":26.5,"failure":null,"generated":false,"runs":0},{"title":"rejects missing age","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":23.9,"failure":null,"generated":false,"runs":0},{"title":"rejects missing flag","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":19.4,"failure":null,"generated":false,"runs":0},{"title":"rejects age as string","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":20.3,"failure":null,"generated":false,"runs":0},{"title":"rejects fractional age","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":19.5,"failure":null,"generated":false,"runs":0},{"title":"rejects negative age","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":15.5,"failure":null,"generated":false,"runs":0},{"title":"rejects under 18","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":11.8,"failure":null,"generated":false,"runs":0},{"title":"rejects over 99","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":11.3,"failure":null,"generated":false,"runs":0},{"title":"rejects null age","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":11.4,"failure":null,"generated":false,"runs":0},{"title":"rejects flag as string","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":12.2,"failure":null,"generated":false,"runs":0},{"title":"rejects flag as number","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":12,"failure":null,"generated":false,"runs":0},{"title":"rejects unknown field","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":14,"failure":null,"generated":false,"runs":0},{"title":"gives one clear message per field","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":12.3,"failure":null,"generated":false,"runs":0},{"title":"rejects malformed JSON","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":56.7,"failure":null,"generated":false,"runs":0},{"title":"a client cannot inject its own price or expiry","ancestors":["POST /api/v1/insurance/quote (e2e)","strict validation (Task 2.1)"],"status":"passed","durationMs":20.7,"failure":null,"generated":false,"runs":0}],"error":null}],"wallMs":26621,"error":null},{"id":"web","name":"Website","command":"npm run web:test","covers":"The countdown maths: server time, round trips, wrong device clocks, sleep.","files":[{"path":"apps/web/src/lib/lock-clock.property.test.ts","stage":"lock","durationMs":73,"tests":[{"title":"never goes negative and never shows more than the server reported","ancestors":["countdown maths (generated)"],"status":"passed","durationMs":18.8,"failure":null,"generated":true,"runs":1000},{"title":"is off from the true deadline by at most half the round trip","ancestors":["countdown maths (generated)"],"status":"passed","durationMs":6.1,"failure":null,"generated":true,"runs":1000},{"title":"the absolute device time is irrelevant: shifting the wall clock by any amount changes nothing","ancestors":["countdown maths (generated)"],"status":"passed","durationMs":12.7,"failure":null,"generated":true,"runs":1000},{"title":"only counts down: as real time passes, the time left never goes up","ancestors":["countdown maths (generated)"],"status":"passed","durationMs":6.6,"failure":null,"generated":true,"runs":1000},{"title":"turning the device clock BACK never adds time","ancestors":["countdown maths (generated)"],"status":"passed","durationMs":6,"failure":null,"generated":true,"runs":1000},{"title":"a sleeping computer (performance.now paused) still loses the time it slept","ancestors":["countdown maths (generated)"],"status":"passed","durationMs":15.5,"failure":null,"generated":true,"runs":1000},{"title":"reaches exactly 0 once the reported time has fully elapsed","ancestors":["countdown maths (generated)"],"status":"passed","durationMs":7.8,"failure":null,"generated":true,"runs":1000}],"error":null},{"path":"apps/web/src/lib/lock-clock.test.ts","stage":"lock","durationMs":2,"tests":[{"title":"subtracts half the round trip from the server-reported time","ancestors":["quote-lock countdown"],"status":"passed","durationMs":1,"failure":null,"generated":false,"runs":0},{"title":"counts down by elapsed time only; the absolute device time is irrelevant","ancestors":["quote-lock countdown"],"status":"passed","durationMs":0.3,"failure":null,"generated":false,"runs":0},{"title":"gains nothing when the device clock is turned back","ancestors":["quote-lock countdown"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"still counts time while the computer sleeps (performance.now paused)","ancestors":["quote-lock countdown"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"can only end early, never late, when the clock is turned forward","ancestors":["quote-lock countdown"],"status":"passed","durationMs":0.1,"failure":null,"generated":false,"runs":0},{"title":"never goes below zero","ancestors":["quote-lock countdown"],"status":"passed","durationMs":0.2,"failure":null,"generated":false,"runs":0},{"title":"shows an already-expired quote as expired","ancestors":["quote-lock countdown"],"status":"passed","durationMs":0.1,"failure":null,"generated":false,"runs":0}],"error":null}],"wallMs":650,"error":null}]};
+
+/* ---------------------------------------------------------------- helpers */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtInt = (n) => Math.round(n).toLocaleString('en-IN');
+const fmtMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 0 : 1)} s` : ms >= 1 ? `${Math.round(ms)} ms` : '<1 ms');
+const niceName = (p) => p.split('/').pop().replace(/\.(e2e-spec|int-spec|spec|test)\.ts$/, '').replace(/\.property$/, ' (generated)');
+const ICON = {
+  passed: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--pass)"/><path d="M4 7.2l2 2 4-4.4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  gen: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--gen)"/><path d="M4 7.2l2 2 4-4.4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  failed: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--fail)"/><path d="M4.6 4.6l4.8 4.8M9.4 4.6l-4.8 4.8" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  skipped: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--skip)"/><path d="M4.5 7h5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  chev: '<svg class="chev" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  search: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+};
+const iconFor = (t) => (t.status === 'passed' ? (t.generated ? ICON.gen : ICON.passed) : ICON[t.status]);
+
+/* ---------------------------------------------------------------- data */
+if (!DATA) {
+  document.getElementById('app').innerHTML = '<p style="padding:40px">No data — generate this page with <code>npm run test:report</code>.</p>';
+  throw new Error('no data');
+}
+let uid = 0;
+const tests = [];
+const files = [];
+for (const s of DATA.suites) {
+  for (const f of s.files) {
+    const file = { ...f, suite: s, id: `f${files.length}` };
+    file.tests = f.tests.map((t) => ({ ...t, id: `t${uid++}`, file, suite: s, stage: f.stage }));
+    files.push(file);
+    tests.push(...file.tests);
+  }
+}
+const problems = [
+  ...tests.filter((t) => t.status === 'failed').map((t) => ({ kind: 'test', t })),
+  ...files.filter((f) => f.error).map((f) => ({ kind: 'file', f })),
+  ...DATA.suites.filter((s) => s.error).map((s) => ({ kind: 'suite', s })),
+];
+const passed = tests.filter((t) => t.status === 'passed').length;
+const failed = tests.filter((t) => t.status === 'failed').length;
+const skipped = tests.filter((t) => t.status === 'skipped').length;
+const generated = tests.filter((t) => t.generated);
+const cases = generated.reduce((s, t) => s + (t.status === 'passed' ? t.runs : 0), 0);
+const ok = problems.length === 0;
+const stages = Object.fromEntries(DATA.stages.map((st) => [st.id, { ...st, tests: tests.filter((t) => t.stage === st.id) }]));
+
+/* ---------------------------------------------------------------- render */
+const app = document.getElementById('app');
+const when = new Date(DATA.generatedAt);
+const pct = tests.length ? passed / tests.length : 0;
+const C = 2 * Math.PI * 54;
+
+function barHTML(list) {
+  const n = list.length || 1;
+  const w = (k) => (100 * list.filter(k).length) / n;
+  return `<div class="bar" aria-hidden="true">
+    <i class="p" style="width:${w((t) => t.status === 'passed' && !t.generated)}%"></i>
+    <i class="g" style="width:${w((t) => t.status === 'passed' && t.generated)}%"></i>
+    <i class="f" style="width:${w((t) => t.status === 'failed')}%"></i>
+    <i class="s" style="width:${w((t) => t.status === 'skipped')}%"></i></div>`;
+}
+
+app.innerHTML = `
+<header class="hero ${ok ? '' : 'has-fail'}">
+  <div class="meta">
+    <span>CareShield D2C · test report</span>
+    <span>commit <b>${esc(DATA.git.commit || '—')}</b>${DATA.git.dirty ? ' + local changes' : ''}</span>
+    <span>branch <b>${esc(DATA.git.branch || '—')}</b></span>
+    <span><b>${when.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</b></span>
+    <span>Node ${esc(DATA.env.node)} · ${esc(DATA.env.platform)}</span>
+  </div>
+  <div class="hero-main">
+    <div class="ring-wrap" role="img" aria-label="${passed} of ${tests.length} tests passed">
+      <svg viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="54" fill="none" stroke="rgb(255 255 255 / .12)" stroke-width="10"/>
+        <circle cx="60" cy="60" r="54" fill="none" stroke="${ok ? '#3ddc9f' : '#ff7898'}" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}"/>
+      </svg>
+      <div class="ring-center"><div class="big tabular">${fmtInt(passed)}</div><div class="small">of ${fmtInt(tests.length)} passed</div></div>
+    </div>
+    <div>
+      <h1 class="verdict">${ok ? `All tests <em>passing.</em>` : `<em>${problems.length} problem${problems.length > 1 ? 's' : ''}</em> to fix.`}</h1>
+      <p class="sub">${esc(DATA.git.subject || '')}</p>
+      <div class="kpis">
+        <div class="kpi"><div class="v">${fmtMs(DATA.wallMs)}</div><div class="l">total run time</div></div>
+        <div class="kpi"><div class="v">${files.length}</div><div class="l">test files</div></div>
+        <div class="kpi"><div class="v">${generated.length}</div><div class="l">generated tests</div></div>
+        <div class="kpi"><div class="v">≈ ${fmtInt(cases)}</div><div class="l">random cases tried</div></div>
+        ${failed ? `<div class="kpi"><div class="v">${failed}</div><div class="l">failed</div></div>` : ''}
+        ${skipped ? `<div class="kpi"><div class="v">${skipped}</div><div class="l">skipped</div></div>` : ''}
+      </div>
+    </div>
+  </div>
+</header>
+
+${problems.length ? `
+<section id="failures">
+  <div class="sec-head"><div><h2>What failed</h2><p>Fix these first. Each one links to its place in the test list.</p></div></div>
+  <div class="card fails">
+    ${problems.map((p) => p.kind === 'test'
+      ? `<div class="fitem"><div><span class="tag fail">${esc(p.t.suite.name)}</span> <b>${esc(p.t.title)}</b></div>
+         <div class="mono" style="font-size:12px;color:var(--faint)">${esc(p.t.file.path)}</div>
+         ${p.t.failure ? `<pre>${esc(p.t.failure)}</pre>` : ''}
+         <div><button class="linkish" data-goto="${p.t.id}">Show in the test list →</button></div></div>`
+      : p.kind === 'file'
+      ? `<div class="fitem"><div><span class="tag fail">${esc(p.f.suite.name)}</span> <b>${esc(niceName(p.f.path))} could not run</b></div>
+         <div class="mono" style="font-size:12px;color:var(--faint)">${esc(p.f.path)}</div><pre>${esc(p.f.error)}</pre></div>`
+      : `<div class="fitem"><div><span class="tag fail">${esc(p.s.name)}</span> <b>The suite did not run</b></div><pre>${esc(p.s.error)}</pre></div>`).join('')}
+  </div>
+</section>` : ''}
+
+<section id="suites">
+  <div class="sec-head"><div><h2>Four suites</h2><p>From pure logic to the real database and the whole API over HTTP. Click one to see its tests.</p></div></div>
+  <div class="suites">
+    ${DATA.suites.map((s) => {
+      const list = tests.filter((t) => t.suite === s);
+      const p = list.filter((t) => t.status === 'passed').length;
+      const broken = files.filter((f) => f.suite === s && f.error).length + (s.error ? 1 : 0);
+      const bad = list.filter((t) => t.status === 'failed').length;
+      return `<button class="suite ${broken || bad ? 'bad' : ''}" data-suite="${s.id}">
+        <div class="top"><h3>${esc(s.name)}</h3><div class="count">${p}<small> / ${list.length}</small></div></div>
+        ${barHTML(list)}
+        ${broken ? `<p class="warn">⚠ ${s.error ? 'The suite did not run' : `${broken} file${broken > 1 ? 's' : ''} could not run`} — see “What failed”</p>` : ''}
+        <p class="covers">${esc(s.covers)}</p>
+        <div class="foot"><span>${esc(s.command)}</span><span>${fmtMs(s.wallMs)} · ${list.filter((t) => t.generated).length} generated</span></div>
+      </button>`;
+    }).join('')}
+  </div>
+</section>
+
+<section id="mosaic">
+  <div class="sec-head"><div><h2>Every test, at a glance</h2><p>One square per test, grouped by suite and file. Hover to see what it checks; click to jump to it.</p></div></div>
+  <div class="card mosaic">
+    <div class="legend">
+      <span><i class="sw" style="background:var(--pass)"></i>Passed</span>
+      <span><i class="sw" style="background:var(--gen)"></i>Passed · generated (fast-check)</span>
+      <span><i class="sw" style="background:var(--fail)"></i>Failed</span>
+      ${skipped ? '<span><i class="sw" style="background:var(--skip)"></i>Skipped</span>' : ''}
+    </div>
+    ${DATA.suites.map((s) => {
+      const fs = files.filter((f) => f.suite === s);
+      const n = fs.reduce((a, f) => a + f.tests.length, 0);
+      return `<div class="mgroup"><div class="lbl">${esc(s.name)}<small>${n} tests · ${fs.length} files</small></div>
+        <div class="cells">${fs.map((f) => `<div class="cellfile" aria-label="${esc(f.path)}">${f.tests.map((t) =>
+          `<button class="cell ${t.status === 'passed' ? (t.generated ? 'gen' : 'passed') : t.status}" data-tip="${t.id}" data-goto="${t.id}" aria-label="${esc(t.status)}: ${esc(t.title)}"></button>`).join('')}</div>`).join('')}</div></div>`;
+    }).join('')}
+  </div>
+</section>
+
+<section id="journey">
+  <div class="sec-head"><div><h2>Along the purchase journey</h2><p>The same tests, arranged by what the customer does, plus the layers every step relies on. Click a card to filter the list.</p></div></div>
+  <div class="journey">
+    <div class="steps">${['quote', 'declare', 'pay'].map((id, i) => stageCard(stages[id], `Step ${i + 1}`)).join('<span class="arrow" aria-hidden="true">→</span>')}</div>
+    <div class="layers">${['lock', 'audit', 'platform'].map((id) => stageCard(stages[id], 'Underneath every step', true)).join('')}</div>
+  </div>
+</section>
+
+<section id="generated">
+  <div class="sec-head"><div><h2>Generated tests</h2><p>Instead of a handful of hand-picked examples, these state a rule and let fast-check invent the inputs, always including the tricky boundaries.</p></div></div>
+  <div class="gen-grid">
+    <div class="card gen-hero">
+      <div class="huge">≈ ${fmtInt(cases)}</div>
+      <p>random cases tried by <b>${generated.length}</b> generated tests in this run${DATA.fcOverride ? ` (FC_NUM_RUNS=${DATA.fcOverride})` : ''}.</p>
+      <div class="how">
+        <div class="step-line"><span class="n">1</span><span>A rule is written once, e.g. <i>“the database accepts exactly the legal transitions”</i>.</span></div>
+        <div class="step-line"><span class="n">2</span><span>fast-check generates inputs (ages, JSON bodies, operation sequences, clocks) and checks the rule on every one.</span></div>
+        <div class="step-line"><span class="n">3</span><span>If one breaks, it shrinks the failure to the smallest example and prints a seed to replay it.</span></div>
+      </div>
+      <pre class="cmd"><span class="c"># try harder, or replay a failure</span>
+FC_NUM_RUNS=5000 npm run test:report
+FC_SEED=&lt;seed&gt; npm test</pre>
+    </div>
+    <div class="card props">
+      ${(() => {
+        const byFile = files.map((f) => ({ f, g: f.tests.filter((t) => t.generated) })).filter((x) => x.g.length);
+        const max = Math.max(1, ...byFile.map((x) => x.g.reduce((a, t) => a + t.runs, 0)));
+        return byFile.sort((a, b) => b.g.reduce((s, t) => s + t.runs, 0) - a.g.reduce((s, t) => s + t.runs, 0)).map(({ f, g }) => {
+          const n = g.reduce((a, t) => a + t.runs, 0);
+          return `<div class="prop"><div class="name">${esc(niceName(f.path))} · ${g.length} rule${g.length > 1 ? 's' : ''}<small>${esc(f.suite.name)} · ${g[0].runs} cases each</small></div>
+            <div class="hbar"><i style="width:${(100 * n) / max}%"></i></div><div class="n">${fmtInt(n)}</div></div>`;
+        }).join('');
+      })()}
+    </div>
+  </div>
+</section>
+
+<section id="time">
+  <div class="sec-head"><div><h2>Where the time goes</h2><p>The ${Math.min(12, files.length)} slowest files. Database and HTTP tests cost more because every case hits PostgreSQL.</p></div></div>
+  <div class="card time">
+    ${(() => {
+      const top = [...files].sort((a, b) => b.durationMs - a.durationMs).slice(0, 12);
+      const max = Math.max(1, ...top.map((f) => f.durationMs));
+      return top.map((f) => `<div class="trow"><div class="f" title="${esc(f.path)}">${esc(niceName(f.path))}<small>${esc(f.suite.name)}</small></div>
+        <div class="hbar"><i class="${f.tests.some((t) => t.generated) ? 'gen' : ''}" style="width:${(100 * f.durationMs) / max}%"></i></div><div class="v">${fmtMs(f.durationMs)}</div></div>`).join('');
+    })()}
+  </div>
+</section>
+
+<section id="explorer">
+  <div class="sec-head"><div><h2>All ${fmtInt(tests.length)} tests</h2><p>Search by what a test checks, or filter by suite, result or kind.</p></div></div>
+  <div class="card">
+    <div class="toolbar">
+      <label class="search">${ICON.search}<input id="q" type="search" placeholder="Search, e.g. “expired”, “idempotency”, “age 45”" autocomplete="off"></label>
+      <div class="chips" id="f-status"></div>
+      <div class="chips" id="f-kind"></div>
+    </div>
+    <div class="toolbar" style="position:static;border-radius:0;padding-top:0"><div class="chips" id="f-suite"></div><div class="chips" id="f-stage"></div></div>
+    <div class="results-note"><span id="count"></span><span><button class="linkish" id="expand">Expand all</button> · <button class="linkish" id="clear">Clear filters</button></span></div>
+    <div id="list"></div>
+  </div>
+</section>
+
+<footer>
+  <span>Generated by <span class="mono">npm run test:report</span> · ${esc(when.toISOString())}</span>
+  <span>Open this file in any browser. No server needed.</span>
+</footer>`;
+
+function stageCard(st, kicker, layer = false) {
+  const list = st.tests;
+  const bad = list.filter((t) => t.status === 'failed').length;
+  const sample = list.filter((t) => !t.generated).slice(0, 2).concat(list.filter((t) => t.generated).slice(0, 1));
+  return `<button class="stage ${layer ? 'layer' : ''}" data-stage="${st.id}">
+    <span class="kicker">${kicker}</span><h3>${esc(st.name)}</h3>
+    <div class="nums"><b>${list.length}</b><span>tests · ${list.filter((t) => t.generated).length} generated${bad ? ` · <span style="color:var(--fail)">${bad} failed</span>` : ''}</span></div>
+    ${barHTML(list)}
+    <ul>${sample.map((t) => `<li>${iconFor(t)}<span>${esc(t.title)}</span></li>`).join('')}</ul>
+  </button>`;
+}
+
+/* ---------------------------------------------------------------- explorer */
+const state = { q: '', status: 'all', kind: 'all', suite: 'all', stage: 'all' };
+function chipRow(el, key, opts) {
+  el.innerHTML = opts.map(([v, label, n]) => `<button class="chip" data-k="${key}" data-v="${v}" aria-pressed="${state[key] === v}">${esc(label)}${n != null ? `<span class="c">${n}</span>` : ''}</button>`).join('');
+}
+function renderChips() {
+  chipRow($('#f-status'), 'status', [['all', 'All'], ['passed', 'Passed', passed], ['failed', 'Failed', failed], ...(skipped ? [['skipped', 'Skipped', skipped]] : [])]);
+  chipRow($('#f-kind'), 'kind', [['all', 'Any kind'], ['generated', 'Generated', generated.length], ['written', 'Hand-written', tests.length - generated.length]]);
+  chipRow($('#f-suite'), 'suite', [['all', 'All suites'], ...DATA.suites.map((s) => [s.id, s.name, tests.filter((t) => t.suite === s).length])]);
+  chipRow($('#f-stage'), 'stage', [['all', 'Any stage'], ...DATA.stages.map((st) => [st.id, st.name, stages[st.id].tests.length])]);
+}
+const hl = (text, q) => {
+  const e = esc(text);
+  if (!q) return e;
+  const i = text.toLowerCase().indexOf(q);
+  return i < 0 ? e : esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
+};
+function matches(t) {
+  if (state.status !== 'all' && t.status !== state.status) return false;
+  if (state.kind === 'generated' && !t.generated) return false;
+  if (state.kind === 'written' && t.generated) return false;
+  if (state.suite !== 'all' && t.suite.id !== state.suite) return false;
+  if (state.stage !== 'all' && t.stage !== state.stage) return false;
+  if (state.q) {
+    const hay = `${t.title} ${t.ancestors.join(' ')} ${t.file.path}`.toLowerCase();
+    if (!hay.includes(state.q)) return false;
+  }
+  return true;
+}
+let forceOpen = false;
+function renderList(highlightId) {
+  const filtering = state.q || state.status !== 'all' || state.kind !== 'all' || state.suite !== 'all' || state.stage !== 'all';
+  const shown = files.map((f) => ({ f, ts: f.tests.filter(matches) })).filter((x) => x.ts.length || (x.f.error && !filtering));
+  const count = shown.reduce((a, x) => a + x.ts.length, 0);
+  $('#count').textContent = `${fmtInt(count)} of ${fmtInt(tests.length)} tests in ${shown.length} file${shown.length === 1 ? '' : 's'}`;
+  if (!shown.length) { $('#list').innerHTML = '<div class="empty">No tests match. Try a different search or clear the filters.</div>'; return; }
+  $('#list').innerHTML = shown.map(({ f, ts }) => {
+    const bad = f.tests.filter((t) => t.status === 'failed').length;
+    const open = forceOpen || filtering || bad || f.error || ts.some((t) => t.id === highlightId);
+    return `<details class="file" ${open ? 'open' : ''} id="${f.id}">
+      <summary>${ICON.chev}<span class="fname"><b>${esc(niceName(f.path))}</b><small>${esc(f.path)}</small></span>
+        <span class="fstat"><span class="tag suite">${esc(f.suite.name)}</span>${f.tests.some((t) => t.generated) ? '<span class="tag gen">generated</span>' : ''}${bad || f.error ? `<span class="tag fail">${f.error ? 'did not run' : bad + ' failed'}</span>` : ''}<span>${f.tests.filter((t) => t.status === 'passed').length}/${f.tests.length}</span><span>${fmtMs(f.durationMs)}</span></span></summary>
+      ${f.error ? `<pre class="ferr" style="white-space:pre-wrap;background:var(--fail-soft);border-radius:10px;padding:10px 12px;font:12px/1.5 var(--mono)">${esc(f.error)}</pre>` : ''}
+      <div class="tests">${ts.map((t) => `<div class="test ${t.id === highlightId ? 'hit' : ''}" id="${t.id}">
+        ${iconFor(t)}<span class="ttl">${t.ancestors.length ? `<span class="anc">${hl(t.ancestors.join(' › '), state.q)}</span>` : ''}${hl(t.title, state.q)}</span>
+        <span class="right">${t.generated ? `<span class="tag gen">${fmtInt(t.runs)} cases</span>` : ''}<span>${fmtMs(t.durationMs)}</span></span>
+        ${t.failure ? `<pre>${esc(t.failure)}</pre>` : ''}</div>`).join('')}</div>
+    </details>`;
+  }).join('');
+}
+function setFilter(key, v) {
+  state[key] = v;
+  renderChips();
+  renderList();
+}
+renderChips();
+renderList();
+
+/* ---------------------------------------------------------------- events */
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (chip) return setFilter(chip.dataset.k, chip.dataset.v);
+  const suite = e.target.closest('[data-suite]');
+  if (suite) { setFilter('suite', suite.dataset.suite); return $('#explorer').scrollIntoView(); }
+  const stage = e.target.closest('[data-stage]');
+  if (stage) { setFilter('stage', stage.dataset.stage); return $('#explorer').scrollIntoView(); }
+  const go = e.target.closest('[data-goto]');
+  if (go) {
+    Object.assign(state, { q: '', status: 'all', kind: 'all', suite: 'all', stage: 'all' });
+    $('#q').value = '';
+    renderChips();
+    renderList(go.dataset.goto);
+    document.querySelectorAll('.cell.hit').forEach((c) => c.classList.remove('hit'));
+    document.querySelector(`.cell[data-goto="${go.dataset.goto}"]`)?.classList.add('hit');
+    document.getElementById(go.dataset.goto)?.scrollIntoView({ block: 'center' });
+    return;
+  }
+  if (e.target.id === 'expand') { forceOpen = !forceOpen; e.target.textContent = forceOpen ? 'Collapse all' : 'Expand all'; renderList(); }
+  if (e.target.id === 'clear') { Object.assign(state, { q: '', status: 'all', kind: 'all', suite: 'all', stage: 'all' }); $('#q').value = ''; renderChips(); renderList(); }
+});
+let qTimer;
+$('#q').addEventListener('input', (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => { state.q = e.target.value.trim().toLowerCase(); renderList(); }, 120); });
+
+// Tooltip for the mosaic
+const tip = $('#tip');
+const byId = Object.fromEntries(tests.map((t) => [t.id, t]));
+function showTip(el, x, y) {
+  const t = byId[el.dataset.tip];
+  if (!t) return;
+  tip.innerHTML = `<div><b>${t.status === 'passed' ? 'Passed' : t.status === 'failed' ? 'Failed' : 'Skipped'}</b>${t.generated ? ` · generated, ${fmtInt(t.runs)} cases` : ''} · ${fmtMs(t.durationMs)}</div>
+    <div style="margin-top:4px">${esc(t.title)}</div><div class="t-file">${esc(t.file.path)}</div>`;
+  tip.classList.add('on');
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(window.innerWidth - r.width - 12, Math.max(12, x + 14)) + 'px';
+  tip.style.top = (y + r.height + 24 > window.innerHeight ? y - r.height - 14 : y + 18) + 'px';
+}
+document.addEventListener('pointerover', (e) => { const c = e.target.closest('[data-tip]'); if (c) showTip(c, e.clientX, e.clientY); });
+document.addEventListener('pointermove', (e) => { const c = e.target.closest('[data-tip]'); if (c) showTip(c, e.clientX, e.clientY); else tip.classList.remove('on'); });
+document.addEventListener('focusin', (e) => { const c = e.target.closest('[data-tip]'); if (c) { const r = c.getBoundingClientRect(); showTip(c, r.left, r.bottom); } });
+document.addEventListener('focusout', () => tip.classList.remove('on'));
+</script>
+</body>
+</html>
